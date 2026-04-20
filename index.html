@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>充放電サイクル特徴点抽出ツール (v2)</title>
+<title>充放電サイクル特徴点抽出ツール (v3)</title>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
@@ -37,22 +37,30 @@
     padding: 14px 18px; border-radius: 6px; margin-bottom: 12px;
     font-size: .88em; line-height: 1.7;
   }
-  .param-help h3 { margin: 0 0 6px; color: #3949ab; font-size: 1em; }
+  .param-help h3 { margin: 0 0 10px; color: #3949ab; font-size: 1em; }
   .param-help dl { margin: 0; display: grid;
-                   grid-template-columns: max-content 1fr; gap: 4px 12px; }
-  .param-help dt { font-weight: 700; color: #1a237e; }
+                   grid-template-columns: max-content 1fr; gap: 10px 14px; }
+  .param-help dt { font-weight: 700; color: #1a237e; padding-top: 2px; white-space: nowrap; }
   .param-help dd { margin: 0; color: #37474f; }
-  .param-help .tip { margin-top: 8px; color: #546e7a; font-size: .9em; }
+  .param-help .ok { color: #d84315; font-weight: 600; }
+  .param-help .ex { background: #ffffff; padding: 4px 8px; border-radius: 4px;
+                    font-family: monospace; font-size: .9em; color: #1a237e; }
+  .param-help .tip { margin-top: 12px; color: #546e7a; font-size: .9em;
+                     padding: 8px 12px; background: #fff8e1;
+                     border-radius: 6px; border-left: 3px solid #ffb300; }
 
   .params { display: grid;
             grid-template-columns: repeat(auto-fit,minmax(240px,1fr));
             gap: 14px; margin-top: 12px; }
   .params label { display: flex; flex-direction: column; gap: 4px;
-                  font-size: .9em; color: #546e7a; }
-  .params label .hint { font-size: .78em; color: #90a4ae;
+                  font-size: .9em; color: #37474f; font-weight: 600; }
+  .params label .hint { font-size: .78em; color: #78909c;
                         font-weight: normal; }
   .params input { padding: 8px 10px; border: 1px solid #cfd8dc;
                   border-radius: 6px; font-size: 1em; }
+  .params .pbadge { display: inline-block; background: #667eea; color: white;
+                    font-size: .7em; padding: 1px 6px; border-radius: 3px;
+                    margin-right: 4px; font-weight: 700; }
   .btn { background: linear-gradient(135deg,#667eea,#764ba2); color: white;
          border: none; padding: 10px 22px; border-radius: 6px;
          cursor: pointer; font-size: .95em; font-weight: 600;
@@ -61,6 +69,7 @@
   .btn.secondary { background: #607d8b; }
   .btn.small { padding: 6px 12px; font-size: .85em; }
   .btn.success { background: linear-gradient(135deg,#43a047,#2e7d32); }
+  .btn.reset   { background: #90a4ae; }
 
   /* グラフ関連 */
   .chart-controls {
@@ -91,7 +100,7 @@
           min-width: 140px; }
   .stat .v { font-size: 1.6em; font-weight: 700; color: #667eea; }
   .stat .l { font-size: .82em; color: #546e7a; }
-  #log { max-height: 140px; overflow-y: auto; font-family: monospace;
+  #log { max-height: 160px; overflow-y: auto; font-family: monospace;
          font-size: .85em; background: #263238; color: #aed581;
          padding: 12px; border-radius: 6px; white-space: pre-wrap; }
   .legend-dot { display: inline-block; width: 10px; height: 10px;
@@ -105,7 +114,7 @@
 
 <header>
   <h1>🔋 充放電サイクル特徴点抽出ツール</h1>
-  <p>T&D Graph CSV から 青(放電終了Ch1底) / 赤(充電終了ピーク) / 黄 / 緑 を自動抽出</p>
+  <p>T&amp;D Graph CSV から 青(放電底) / 赤(充電ピーク) / 黄(2回目急降下直前) / 緑(下げ止まり) を自動抽出</p>
 </header>
 
 <main>
@@ -124,59 +133,110 @@
     <h2>② パラメータ</h2>
 
     <div class="param-help">
-      <h3>💡 各パラメータの説明</h3>
+      <h3>💡 各パラメータの意味と調整のしかた</h3>
       <dl>
-        <dt>Ch2 状態判定閾値 [V]</dt>
+        <dt><span class="pbadge" style="background:#d32f2f">P1</span>急上昇閾値<br>[V/step]</dt>
         <dd>
-          Ch2 の電圧から電池の動作状態を 3 分類する境界値です。<br>
-          <b>｜Ch2｜ &gt; 閾値</b> のとき充電(+) / 放電(-) 中と判定し、それ以下は「待機」とみなします。<br>
-          <span style="color:#d84315">👉 通常は <b>0.1</b> のままでOK。</span>
-          Ch2 の充放電電圧が ±0.2V 程度なら 0.1 が最適。
-          もしノイズが大きかったり、信号の振幅が小さい場合は
-          <b>振幅の半分程度</b> に設定してください（例: 振幅±0.05V なら 0.025）。
+          Ch1 電圧の <b>隣り合う 2 点の差</b> がこの値より大きいとき、
+          <b>充電開始（青→赤の立ち上がり）</b> とみなします。
+          例: <span class="ex">0.88V → 1.17V</span> の差 <b>+0.29V</b> は閾値 0.10 を超えるので急上昇と検出。<br>
+          <span class="ok">👉 通常 <b>0.10</b> でOK。</span>
+          立ち上がりがもっと急な装置なら 0.2〜0.5 に、
+          ゆっくりしか上がらない場合は 0.05 など小さく調整。
         </dd>
 
-        <dt>下げ止まり経過秒 [s]</dt>
+        <dt><span class="pbadge" style="background:#e53935">P2</span>急降下閾値<br>[V/step]</dt>
         <dd>
-          放電が始まってから <b>緑丸（下げ止まり）</b> を採取するまでの経過時間です。<br>
-          放電開始直後は Ch1 が急降下し、数秒〜数十秒で一旦落ち着きます。この落ち着いたタイミングを緑丸とします。<br>
-          <span style="color:#d84315">👉 通常は <b>30</b> 秒でOK。</span>
-          急降下の持続時間が長い場合は 60〜120 に、短い場合は 10〜20 に調整してください。
+          同様に、<b>隣り合う 2 点の差がマイナス方向に</b>この値より大きいとき
+          <b>急降下</b> とみなします（赤丸直前 / 黄丸直前 を検出するのに使用）。
+          例: <span class="ex">1.70V → 1.52V</span> の差 <b>−0.18V</b> は閾値 0.08 を超えるので急降下と検出。<br>
+          <span class="ok">👉 通常 <b>0.08</b> でOK。</span>
+          降下幅が小さくて見逃される場合は 0.05 に、
+          ノイズで誤検出する場合は 0.12 に調整。
         </dd>
 
-        <dt>ヘッダスキップ行数</dt>
+        <dt><span class="pbadge" style="background:#fb8c00">P3</span>Ch2 零近傍幅<br>[V]</dt>
         <dd>
-          CSV 先頭の見出し行数です。T&D Graph 標準エクスポートでは
-          「Date/Time / Channel / 単位」の <b>3 行</b> がヘッダです。<br>
-          <span style="color:#d84315">👉 T&D Graph の出力なら <b>3</b> のままでOK。</span>
-          他のCSV形式で見出しが 1 行しかない場合は 1 に変更してください。
+          急降下が起きた点で <b>Ch2 の値</b> を見て、
+          1 回目の降下と 2 回目の降下を区別します。<br>
+          ・<span class="ex">|Ch2| ≦ この幅</span> → <b>1回目</b>（充電終了→休止 = <span style="color:#d32f2f">赤丸</span>）<br>
+          ・<span class="ex">Ch2 &lt; −この幅</span> → <b>2回目</b>（放電開始 = <span style="color:#f9a825">黄</span>／<span style="color:#2e7d32">緑丸</span>）<br>
+          <span class="ok">👉 通常 <b>0.10</b> でOK。</span>
+          Ch2 の充放電時の絶対値が小さい（例 ±0.05V）なら 0.025 程度に下げてください。
+        </dd>
+
+        <dt><span class="pbadge" style="background:#2e7d32">P4</span>緑丸オフセット<br>[steps]</dt>
+        <dd>
+          2 回目急降下が起きた <b>点から何サンプル後</b> を
+          「下げ止まり = 緑丸」として採取するかの値。<br>
+          急降下の底がすぐ落ち着く装置なら 3、
+          少し余韻がある場合は 5〜10 が目安です。<br>
+          <span class="ok">👉 通常 <b>3</b> でOK。</span>
+          （サンプリング間隔が 10 秒なら 3 steps = 30 秒後）
+        </dd>
+
+        <dt><span class="pbadge" style="background:#5c6bc0">P5</span>急上昇マージ幅<br>[steps]</dt>
+        <dd>
+          <b>1 サイクル内で急上昇が 2 段階に分かれて検出される</b> ことがあるため、
+          この幅（サンプル数）以内に続いて起きた急上昇は <b>1 つの充電開始に統合</b> します。<br>
+          例: <span class="ex">0.88→1.17</span>（1段目）→少し待機→ <span class="ex">1.21→1.57</span>（2段目）
+          のような <b>階段状の充電開始</b> を 1 イベントにまとめます。<br>
+          <span class="ok">👉 通常 <b>120</b>（=20 分 / 10 秒刻み）でOK。</span>
+          1サイクルが短い（数分）装置なら 30〜60 に下げてください。
+        </dd>
+
+        <dt><span class="pbadge" style="background:#7e57c2">P6</span>急降下マージ幅<br>[steps]</dt>
+        <dd>
+          同様に、<b>連続したサンプルで小刻みに起こる急降下</b> を 1 つにまとめる幅です。
+          急降下は通常 1〜数サンプルで完了するため、このマージ幅は小さめでOK。<br>
+          <span class="ok">👉 通常 <b>10</b> でOK。</span>
+          ノイズ除去のために 20 まで広げるのも可。
         </dd>
       </dl>
       <div class="tip">
-        📌 <b>動作確認の目安</b>: 解析実行後、下の「④ 検証グラフ」で
-        青丸が放電の底(Ch1最低値)に、赤丸が充電のピークにあることを確認してください。
-        ズレていたら閾値を調整すると改善します。
+        📌 <b>動作確認の目安</b>: 解析実行後、下の「④検証グラフ」で
+        <span style="color:#2962ff">青丸</span>が放電の底に、
+        <span style="color:#d32f2f">赤丸</span>が充電のピークに、
+        <span style="color:#f9a825">黄丸</span>が 2 回目降下の直前に、
+        <span style="color:#2e7d32">緑丸</span>が下げ止まりに正しく乗っていれば成功です。
+        位置がズレていたらパラメータを微調整してください。
       </div>
     </div>
 
     <div class="params">
       <label>
-        Ch2 状態判定閾値 [V]
-        <input type="number" id="thr" value="0.1" step="0.01">
-        <span class="hint">デフォルト 0.1 / ±この値で充電・放電・待機を分類</span>
+        <span><span class="pbadge" style="background:#d32f2f">P1</span>急上昇閾値 [V/step]</span>
+        <input type="number" id="rise" value="0.10" step="0.01">
+        <span class="hint">既定 0.10 / これを超えるCh1の上昇を充電開始と判定</span>
       </label>
       <label>
-        下げ止まり経過秒 [s]
-        <input type="number" id="settle" value="30" step="5">
-        <span class="hint">デフォルト 30 / 放電開始から何秒後を緑丸とするか</span>
+        <span><span class="pbadge" style="background:#e53935">P2</span>急降下閾値 [V/step]</span>
+        <input type="number" id="fall" value="0.08" step="0.01">
+        <span class="hint">既定 0.08 / マイナス方向にこれを超える落差を急降下と判定</span>
       </label>
       <label>
-        ヘッダスキップ行数
-        <input type="number" id="skip" value="3" step="1">
-        <span class="hint">デフォルト 3 / CSV先頭の見出し行数</span>
+        <span><span class="pbadge" style="background:#fb8c00">P3</span>Ch2 零近傍幅 [V]</span>
+        <input type="number" id="ch2band" value="0.10" step="0.01">
+        <span class="hint">既定 0.10 / |Ch2|≦この値なら 1回目降下（赤丸）と判定</span>
+      </label>
+      <label>
+        <span><span class="pbadge" style="background:#2e7d32">P4</span>緑丸オフセット [steps]</span>
+        <input type="number" id="gofs" value="3" step="1">
+        <span class="hint">既定 3 / 2回目急降下から何サンプル後を緑丸とするか</span>
+      </label>
+      <label>
+        <span><span class="pbadge" style="background:#5c6bc0">P5</span>急上昇マージ幅 [steps]</span>
+        <input type="number" id="rmg" value="120" step="1">
+        <span class="hint">既定 120 / これ以内の連続急上昇は 1 つの充電開始に統合</span>
+      </label>
+      <label>
+        <span><span class="pbadge" style="background:#7e57c2">P6</span>急降下マージ幅 [steps]</span>
+        <input type="number" id="fmg" value="10" step="1">
+        <span class="hint">既定 10 / これ以内の連続急降下は 1 つに統合</span>
       </label>
     </div>
     <button class="btn" id="runBtn" disabled>▶ 解析実行</button>
+    <button class="btn reset" id="resetBtn">↺ 既定値に戻す</button>
   </div>
 
   <div class="card hide" id="logCard">
@@ -190,7 +250,7 @@
     <div style="margin-top:14px;">
       <span class="legend-dot" style="background:#2962ff"></span>B列 青 = 放電終了Ch1(底)
       <span class="legend-dot" style="background:#d32f2f;margin-left:10px;"></span>C列 赤 = 充電終了Ch1
-      <span class="legend-dot" style="background:#f9a825;margin-left:10px;"></span>D列 黄 = 放電直前Ch1
+      <span class="legend-dot" style="background:#f9a825;margin-left:10px;"></span>D列 黄 = 2回目急降下直前Ch1
       <span class="legend-dot" style="background:#2e7d32;margin-left:10px;"></span>E/F 緑 = 下げ止まりCh1/Ch2
     </div>
     <button class="btn success" id="dlXlsx">⬇ Excel (.xlsx)</button>
@@ -220,7 +280,7 @@
       <span style="color:#cfd8dc;">|</span>
       <button class="btn small secondary" id="btnResetZoom">🔄 ズームリセット</button>
       <span style="color:#90a4ae;font-size:.8em;">
-        （グラフ上でホイール拡大 / ドラッグで範囲選択拡大）
+        （グラフ上でホイール拡大 / ドラッグで範囲選択拡大 / Shift+ドラッグでパン）
       </span>
     </div>
 
@@ -230,22 +290,18 @@
 
 </main>
 
-<footer>Battery Cycle Extractor v2 / ブラウザ内で完結・データはサーバー送信されません</footer>
+<footer>Battery Cycle Extractor v3 / ブラウザ内で完結・データはサーバー送信されません</footer>
 
 <script>
 // =======================================================================
-// コアロジック
+// コアロジック（Python版と同一アルゴリズム / 6 パラメータ）
 // =======================================================================
-function classifyState(ch2, thr) {
-  if (ch2 >  thr) return 'C';
-  if (ch2 < -thr) return 'D';
-  return 'I';
-}
-
 function parseCsv(text, skipRows) {
   const lines = text.split(/\r?\n/);
   const rows = [];
-  for (let i = skipRows; i < lines.length; i++) {
+  // 元仕様に合わせて 3 行固定ヘッダースキップ（外部CSVに合わせたい場合は skipRows も利用可）
+  const skip = skipRows ?? 3;
+  for (let i = skip; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line) continue;
     const cells = line.split(',').map(c => c.replace(/^"|"$/g, '').trim());
@@ -259,67 +315,72 @@ function parseCsv(text, skipRows) {
   return rows;
 }
 
-function extractCycles(rows, thr, settleSec) {
-  rows.forEach(r => r.state = classifyState(r.ch2, thr));
-  const events = [];
-  for (let i = 0; i < rows.length; i++) {
-    const prev = i > 0 ? rows[i-1].state : null;
-    if (rows[i].state !== prev) {
-      events.push({ idx: i, from: prev, to: rows[i].state, time: rows[i].datetime });
+function groupEvents(indices, minGap) {
+  if (indices.length === 0) return [];
+  const groups = [[indices[0]]];
+  for (let k = 1; k < indices.length; k++) {
+    const last = groups[groups.length - 1];
+    if (indices[k] - last[last.length - 1] <= minGap) {
+      last.push(indices[k]);
+    } else {
+      groups.push([indices[k]]);
     }
+  }
+  return groups.map(g => g[0]);
+}
+
+function extractCycles(rows, opts) {
+  const n = rows.length;
+  const rise = [], fall = [];
+  for (let i = 1; i < n; i++) {
+    const d = rows[i].ch1 - rows[i - 1].ch1;
+    if (d > opts.rise) rise.push(i);
+    else if (d < -opts.fall) fall.push(i);
+  }
+  const riseG = groupEvents(rise, opts.riseMerge);
+  const fallG = groupEvents(fall, opts.fallMerge);
+
+  // Ch2 の値で 1回目/2回目 に分類
+  const fallFirst = [], fallSecond = [];
+  for (const idx of fallG) {
+    const c2 = rows[idx].ch2;
+    if (Math.abs(c2) <= opts.ch2Band) fallFirst.push(idx);
+    else if (c2 < -opts.ch2Band) fallSecond.push(idx);
   }
 
   const cycles = [];
-  for (let k = 0; k < events.length; k++) {
-    const ev = events[k];
-    if (ev.from !== 'I' || ev.to !== 'C') continue;
-    const chargeStartIdx = ev.idx;
+  for (let i = 0; i < riseG.length; i++) {
+    const r = riseG[i];
+    const blueI = Math.max(r - 1, 0);
+    const nextR = (i + 1 < riseG.length) ? riseG[i + 1] : n;
 
-    let blueIdx = null;
-    for (let j = k - 1; j >= 0; j--) {
-      if (events[j].from === 'D' && events[j].to === 'I') {
-        blueIdx = Math.max(events[j].idx - 1, 0); break;
+    let redI = null;
+    for (const fi of fallFirst) {
+      if (fi > r && fi < nextR) { redI = fi - 1; break; }
+    }
+    let yelI = null, grnI = null;
+    if (redI !== null) {
+      for (const fi of fallSecond) {
+        if (fi > redI && fi < nextR) {
+          yelI = fi - 1;
+          grnI = Math.min(fi + opts.greenOffset, n - 1);
+          break;
+        }
       }
     }
-    if (blueIdx === null) blueIdx = Math.max(chargeStartIdx - 1, 0);
-
-    let redIdx = null, redEv = null;
-    for (let j = k + 1; j < events.length; j++) {
-      if (events[j].from === 'C' && events[j].to === 'I') {
-        redIdx = Math.max(events[j].idx - 1, 0); redEv = events[j]; break;
-      }
-    }
-    if (redIdx === null) continue;
-
-    let yellowIdx = null, yellowEv = null;
-    for (let j = k + 1; j < events.length; j++) {
-      if (events[j].from === 'I' && events[j].to === 'D'
-          && events[j].idx > redEv.idx) {
-        yellowIdx = Math.max(events[j].idx - 1, 0); yellowEv = events[j]; break;
-      }
-    }
-    if (yellowIdx === null) continue;
-
-    const tSettle = new Date(yellowEv.time.getTime() + settleSec * 1000);
-    let greenIdx = null;
-    for (let j = yellowEv.idx; j < rows.length; j++) {
-      if (rows[j].datetime >= tSettle && rows[j].state === 'D') {
-        greenIdx = j; break;
-      }
-    }
-    if (greenIdx === null) continue;
+    if (redI === null || yelI === null || grnI === null) continue;
 
     cycles.push({
       cycle:       cycles.length + 1,
-      blue_time:   rows[blueIdx].datetime,
-      blue_ch1:    rows[blueIdx].ch1,
-      red_time:    rows[redIdx].datetime,
-      red_ch1:     rows[redIdx].ch1,
-      yellow_time: rows[yellowIdx].datetime,
-      yellow_ch1:  rows[yellowIdx].ch1,
-      green_time:  rows[greenIdx].datetime,
-      green_ch1:   rows[greenIdx].ch1,
-      green_ch2:   rows[greenIdx].ch2,
+      blue_time:   rows[blueI].datetime,
+      blue_ch1:    rows[blueI].ch1,
+      red_time:    rows[redI].datetime,
+      red_ch1:     rows[redI].ch1,
+      yellow_time: rows[yelI].datetime,
+      yellow_ch1:  rows[yelI].ch1,
+      green_time:  rows[grnI].datetime,
+      green_ch1:   rows[grnI].ch1,
+      green_ch2:   rows[grnI].ch2,
     });
   }
   return cycles;
@@ -332,11 +393,18 @@ const $ = id => document.getElementById(id);
 let currentFile = null, currentRows = null, currentCycles = null;
 let chart1 = null, chart2 = null;
 
+const DEFAULTS = { rise: 0.10, fall: 0.08, ch2band: 0.10,
+                   gofs: 3, rmg: 120, fmg: 10 };
+
 function log(msg) {
   $('logCard').classList.remove('hide');
   $('log').textContent += msg + '\n';
   $('log').scrollTop = $('log').scrollHeight;
 }
+
+$('resetBtn').addEventListener('click', () => {
+  Object.keys(DEFAULTS).forEach(k => { $(k).value = DEFAULTS[k]; });
+});
 
 $('file').addEventListener('change', e => {
   if (e.target.files.length) setFile(e.target.files[0]);
@@ -362,15 +430,23 @@ $('runBtn').addEventListener('click', async () => {
   log(`読込中: ${currentFile.name}`);
   const t0 = performance.now();
   const text = await currentFile.text();
-  const skip = parseInt($('skip').value, 10);
-  const rows = parseCsv(text, skip);
+  const rows = parseCsv(text, 3);
   log(`${rows.length.toLocaleString()} 行を解析`);
-  if (rows.length === 0) { log('有効なデータが見つかりません'); return; }
+  if (rows.length === 0) { log('❌ 有効なデータが見つかりません'); return; }
 
-  const thr = parseFloat($('thr').value);
-  const settle = parseInt($('settle').value, 10);
-  const cycles = extractCycles(rows, thr, settle);
-  log(`検出サイクル数: ${cycles.length}`);
+  const opts = {
+    rise:        parseFloat($('rise').value),
+    fall:        parseFloat($('fall').value),
+    ch2Band:     parseFloat($('ch2band').value),
+    greenOffset: parseInt($('gofs').value, 10),
+    riseMerge:   parseInt($('rmg').value, 10),
+    fallMerge:   parseInt($('fmg').value, 10),
+  };
+  log(`閾値: rise>${opts.rise}, fall<-${opts.fall}, ch2Band=${opts.ch2Band}`);
+  log(`マージ: rise=${opts.riseMerge}, fall=${opts.fallMerge}, greenOffset=${opts.greenOffset}`);
+
+  const cycles = extractCycles(rows, opts);
+  log(`✓ 検出サイクル数: ${cycles.length}`);
   log(`処理時間: ${((performance.now()-t0)/1000).toFixed(2)} 秒`);
 
   currentRows = rows; currentCycles = cycles;
@@ -383,28 +459,31 @@ function renderResult() {
 
   $('summary').innerHTML = `
     <div class="stat"><div class="v">${n}</div><div class="l">検出サイクル数</div></div>
-    <div class="stat"><div class="v">${avg('blue_ch1').toFixed(3)}V</div><div class="l">平均 青 放電終了</div></div>
-    <div class="stat"><div class="v">${avg('red_ch1').toFixed(3)}V</div><div class="l">平均 赤 充電終了</div></div>
-    <div class="stat"><div class="v">${avg('yellow_ch1').toFixed(3)}V</div><div class="l">平均 黄 放電直前</div></div>
-    <div class="stat"><div class="v">${avg('green_ch1').toFixed(3)}V</div><div class="l">平均 緑 下げ止まり</div></div>`;
+    <div class="stat"><div class="v">${avg('blue_ch1').toFixed(3)}V</div><div class="l">平均 青 放電底</div></div>
+    <div class="stat"><div class="v">${avg('red_ch1').toFixed(3)}V</div><div class="l">平均 赤 充電ピーク</div></div>
+    <div class="stat"><div class="v">${avg('yellow_ch1').toFixed(3)}V</div><div class="l">平均 黄 2回目降下直前</div></div>
+    <div class="stat"><div class="v">${avg('green_ch1').toFixed(3)}V</div><div class="l">平均 緑 下げ止まりCh1</div></div>
+    <div class="stat"><div class="v">${avg('green_ch2').toFixed(3)}V</div><div class="l">平均 緑 下げ止まりCh2</div></div>`;
 
   let html = '<thead><tr>' +
-    '<th>A:#</th>' +
-    '<th>B:青Ch1</th><th>C:赤Ch1</th><th>D:黄Ch1</th><th>E:緑Ch1</th><th>F:緑Ch2</th>' +
-    '<th>G:青時刻(放電終了)</th><th>H:赤時刻(充電終了)</th><th>I:黄時刻</th><th>J:緑時刻</th>' +
+    '<th>#</th>' +
+    '<th>A 日付</th><th>B 青 時刻</th><th>C 赤 時刻</th>' +
+    '<th>D 黄 Ch1</th><th>E 緑 Ch1</th><th>F 緑 Ch2</th>' +
+    '<th>青 Ch1</th><th>赤 Ch1</th><th>黄 時刻</th><th>緑 時刻</th>' +
     '</tr></thead><tbody>';
   currentCycles.forEach(c => {
     html += `<tr>
       <td>${c.cycle}</td>
-      <td>${c.blue_ch1.toFixed(5)}</td>
-      <td>${c.red_ch1.toFixed(5)}</td>
+      <td>${fmtDateOnly(c.blue_time)}</td>
+      <td>${fmtTimeOnly(c.blue_time)}</td>
+      <td>${fmtTimeOnly(c.red_time)}</td>
       <td>${c.yellow_ch1.toFixed(5)}</td>
       <td>${c.green_ch1.toFixed(5)}</td>
       <td>${c.green_ch2.toFixed(5)}</td>
-      <td>${fmtDate(c.blue_time)}</td>
-      <td>${fmtDate(c.red_time)}</td>
-      <td>${fmtDate(c.yellow_time)}</td>
-      <td>${fmtDate(c.green_time)}</td></tr>`;
+      <td>${c.blue_ch1.toFixed(5)}</td>
+      <td>${c.red_ch1.toFixed(5)}</td>
+      <td>${fmtTimeOnly(c.yellow_time)}</td>
+      <td>${fmtTimeOnly(c.green_time)}</td></tr>`;
   });
   html += '</tbody>';
   $('resultTable').innerHTML = html;
@@ -412,17 +491,23 @@ function renderResult() {
   $('resultCard').classList.remove('hide');
   $('chartCard').classList.remove('hide');
 
-  // 初期範囲: 全体
+  // 初期範囲
   $('rangeFrom').max = n; $('rangeTo').max = n;
   $('rangeFrom').value = 1;
   $('rangeTo').value = Math.min(5, n);
-  renderChart(null, null);  // 全体表示
+  renderChart(null, null); // 全体表示
 }
 
+function pad(n){ return String(n).padStart(2,'0'); }
 function fmtDate(d){
-  const p = n => String(n).padStart(2,'0');
-  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} `
-       + `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} `
+       + `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+function fmtDateOnly(d){
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+function fmtTimeOnly(d){
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 /**
@@ -442,11 +527,9 @@ function renderChart(cycleFrom, cycleTo) {
     visibleCycles = currentCycles.slice(cycleFrom - 1, cycleTo);
     const cFrom = currentCycles[cycleFrom - 1];
     const cTo   = currentCycles[cycleTo - 1];
-    // 範囲前後に少しマージンを入れる
     const pad = 30 * 60 * 1000; // 30分
     tMin = new Date(cFrom.blue_time.getTime() - pad);
-    // 末尾は次サイクルの青、なければ緑の後
-    const nextCycle = currentCycles[cycleTo]; // 1-based なので cycleTo が次インデックス
+    const nextCycle = currentCycles[cycleTo];
     tMax = nextCycle
       ? new Date(nextCycle.blue_time.getTime() + pad)
       : new Date(cTo.green_time.getTime() + pad * 4);
@@ -500,9 +583,9 @@ function renderChart(cycleFrom, cycleTo) {
     data: { datasets: [
       { label: 'Ch1', data: ch1Data, borderColor: '#e53935',
         borderWidth: 1.2, pointRadius: 0, tension: 0 },
-      makeMark(blueP,   '#2962ff', '青 放電終了'),
-      makeMark(redP,    '#d32f2f', '赤 充電終了'),
-      makeMark(yellowP, '#f9a825', '黄 放電直前'),
+      makeMark(blueP,   '#2962ff', '青 放電底'),
+      makeMark(redP,    '#d32f2f', '赤 充電ピーク'),
+      makeMark(yellowP, '#f9a825', '黄 2回目降下直前'),
       makeMark(greenP1, '#2e7d32', '緑 下げ止まり'),
     ]},
     options: {
@@ -548,12 +631,14 @@ function renderChart(cycleFrom, cycleTo) {
 // ボタン操作
 $('btnViewAll').addEventListener('click', () => renderChart(null, null));
 $('btnView3').addEventListener('click', () => {
-  $('rangeFrom').value = 1; $('rangeTo').value = Math.min(3, currentCycles.length);
-  renderChart(1, Math.min(3, currentCycles.length));
+  const to = Math.min(3, currentCycles.length);
+  $('rangeFrom').value = 1; $('rangeTo').value = to;
+  renderChart(1, to);
 });
 $('btnView5').addEventListener('click', () => {
-  $('rangeFrom').value = 1; $('rangeTo').value = Math.min(5, currentCycles.length);
-  renderChart(1, Math.min(5, currentCycles.length));
+  const to = Math.min(5, currentCycles.length);
+  $('rangeFrom').value = 1; $('rangeTo').value = to;
+  renderChart(1, to);
 });
 $('btnViewLast').addEventListener('click', () => {
   const n = currentCycles.length;
@@ -576,22 +661,30 @@ $('btnResetZoom').addEventListener('click', () => {
 // =======================================================================
 function buildSheetData() {
   const header = [
-    'A_サイクル番号',
-    'B_青_放電終了_Ch1(V)',
-    'C_赤_充電終了_Ch1(V)',
-    'D_黄_放電開始直前_Ch1(V)',
-    'E_緑_放電下げ止まり_Ch1(V)',
-    'F_緑_放電下げ止まり_Ch2(V)',
-    'G_青_時刻(放電終了)',
-    'H_赤_時刻(充電終了)',
-    'I_黄_時刻',
-    'J_緑_時刻'
+    'A_青丸_日付',
+    'B_青丸_時刻',
+    'C_赤丸_時刻',
+    'D_黄丸_Ch1(V)',
+    'E_緑丸_Ch1(V)',
+    'F_緑丸_Ch2(V)',
+    'G_サイクル番号',
+    'H_青丸_Ch1(V)',
+    'I_赤丸_Ch1(V)',
+    'J_黄丸_時刻',
+    'K_緑丸_時刻'
   ];
   const rows = currentCycles.map(c => [
+    fmtDateOnly(c.blue_time),
+    fmtTimeOnly(c.blue_time),
+    fmtTimeOnly(c.red_time),
+    Number(c.yellow_ch1.toFixed(5)),
+    Number(c.green_ch1.toFixed(5)),
+    Number(c.green_ch2.toFixed(5)),
     c.cycle,
-    c.blue_ch1, c.red_ch1, c.yellow_ch1, c.green_ch1, c.green_ch2,
-    fmtDate(c.blue_time), fmtDate(c.red_time),
-    fmtDate(c.yellow_time), fmtDate(c.green_time)
+    Number(c.blue_ch1.toFixed(5)),
+    Number(c.red_ch1.toFixed(5)),
+    fmtTimeOnly(c.yellow_time),
+    fmtTimeOnly(c.green_time)
   ]);
   return [header, ...rows];
 }
@@ -600,6 +693,10 @@ $('dlXlsx').addEventListener('click', () => {
   const data = buildSheetData();
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet(data);
+  ws['!cols'] = [
+    {wch:12},{wch:10},{wch:10},{wch:12},{wch:12},{wch:12},
+    {wch:8}, {wch:12},{wch:12},{wch:10},{wch:10}
+  ];
   XLSX.utils.book_append_sheet(wb, ws, 'Cycles');
   const base = currentFile.name.replace(/\.[^.]+$/,'');
   XLSX.writeFile(wb, `${base}_cycles.xlsx`);
