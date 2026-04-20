@@ -2,76 +2,619 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>充放電サイクル抽出ツール 追記版</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>充放電サイクル特徴点抽出ツール (v2)</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 <style>
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Yu Gothic UI",sans-serif;background:#f6f8fb;color:#1f2937;margin:0}
-header{background:linear-gradient(135deg,#1565c0,#2e7d32);color:#fff;padding:24px 28px}
-main{max-width:1100px;margin:0 auto;padding:24px}
-.card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:20px;margin-bottom:18px;box-shadow:0 1px 4px rgba(0,0,0,.04)}
-h2{margin:0 0 14px;font-size:22px} h3{margin:0 0 10px;font-size:18px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
-.item{border:1px solid #e5e7eb;border-radius:10px;padding:12px;background:#fafcff}
-.item b{display:block;margin-bottom:6px}
-.tablewrap{overflow:auto;border:1px solid #e5e7eb;border-radius:10px}
-table{border-collapse:collapse;width:100%} th,td{border-bottom:1px solid #e5e7eb;padding:9px 10px;text-align:left;font-size:14px;white-space:nowrap} th{background:#f1f5f9}
-.note{color:#475569;line-height:1.7}
-.tag{display:inline-block;padding:3px 8px;border-radius:999px;background:#eef2ff;font-size:12px;margin-right:6px}
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+           "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+         margin: 0; padding: 0; background: #f5f7fa; color: #2c3e50; }
+  header { background: linear-gradient(135deg,#667eea,#764ba2); color: white;
+           padding: 24px 32px; box-shadow: 0 2px 8px rgba(0,0,0,.1); }
+  header h1 { margin: 0; font-size: 1.5em; }
+  header p { margin: 6px 0 0; opacity: .9; font-size: .9em; }
+  main { max-width: 1400px; margin: 24px auto; padding: 0 24px; }
+  .card { background: white; border-radius: 12px; padding: 24px;
+          margin-bottom: 20px; box-shadow: 0 2px 12px rgba(0,0,0,.06); }
+  .card h2 { margin-top: 0; color: #34495e; font-size: 1.15em;
+             border-left: 4px solid #667eea; padding-left: 10px; }
+  .drop-zone { border: 2px dashed #b0bec5; border-radius: 10px;
+               padding: 40px; text-align: center; cursor: pointer;
+               transition: all .2s; }
+  .drop-zone:hover, .drop-zone.dragover { background: #eef2ff;
+                                           border-color: #667eea; }
+  .drop-zone .icon { font-size: 3em; color: #90a4ae; }
+  .drop-zone .label { margin-top: 8px; color: #546e7a; }
+  input[type=file] { display: none; }
+
+  /* パラメータ説明 */
+  .param-help {
+    background: #f0f4ff; border-left: 4px solid #667eea;
+    padding: 14px 18px; border-radius: 6px; margin-bottom: 12px;
+    font-size: .88em; line-height: 1.7;
+  }
+  .param-help h3 { margin: 0 0 6px; color: #3949ab; font-size: 1em; }
+  .param-help dl { margin: 0; display: grid;
+                   grid-template-columns: max-content 1fr; gap: 4px 12px; }
+  .param-help dt { font-weight: 700; color: #1a237e; }
+  .param-help dd { margin: 0; color: #37474f; }
+  .param-help .tip { margin-top: 8px; color: #546e7a; font-size: .9em; }
+
+  .params { display: grid;
+            grid-template-columns: repeat(auto-fit,minmax(240px,1fr));
+            gap: 14px; margin-top: 12px; }
+  .params label { display: flex; flex-direction: column; gap: 4px;
+                  font-size: .9em; color: #546e7a; }
+  .params label .hint { font-size: .78em; color: #90a4ae;
+                        font-weight: normal; }
+  .params input { padding: 8px 10px; border: 1px solid #cfd8dc;
+                  border-radius: 6px; font-size: 1em; }
+  .btn { background: linear-gradient(135deg,#667eea,#764ba2); color: white;
+         border: none; padding: 10px 22px; border-radius: 6px;
+         cursor: pointer; font-size: .95em; font-weight: 600;
+         margin-right: 8px; margin-top: 8px; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn.secondary { background: #607d8b; }
+  .btn.small { padding: 6px 12px; font-size: .85em; }
+  .btn.success { background: linear-gradient(135deg,#43a047,#2e7d32); }
+
+  /* グラフ関連 */
+  .chart-controls {
+    display: flex; flex-wrap: wrap; align-items: center;
+    gap: 10px; margin-bottom: 12px;
+    padding: 10px 14px; background: #f5f7fa; border-radius: 8px;
+  }
+  .chart-controls label { font-size: .88em; color: #546e7a;
+                          display: flex; align-items: center; gap: 6px; }
+  .chart-controls input[type=number] {
+    width: 70px; padding: 5px 8px; border: 1px solid #cfd8dc;
+    border-radius: 4px; font-size: .9em;
+  }
+  .chart-box { position: relative; }
+  .chart-box.full { height: 400px; }
+  .chart-box.ch2  { height: 180px; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 12px;
+          font-size: .85em; }
+  th, td { padding: 5px 8px; border: 1px solid #e0e0e0; text-align: right;
+           white-space: nowrap; }
+  th { background: #eceff1; color: #37474f; font-weight: 600;
+       position: sticky; top: 0; }
+  td:first-child, th:first-child { text-align: center; }
+  tr:nth-child(even) td { background: #fafbfc; }
+  .summary { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; }
+  .stat { background: #eef2ff; padding: 10px 18px; border-radius: 8px;
+          min-width: 140px; }
+  .stat .v { font-size: 1.6em; font-weight: 700; color: #667eea; }
+  .stat .l { font-size: .82em; color: #546e7a; }
+  #log { max-height: 140px; overflow-y: auto; font-family: monospace;
+         font-size: .85em; background: #263238; color: #aed581;
+         padding: 12px; border-radius: 6px; white-space: pre-wrap; }
+  .legend-dot { display: inline-block; width: 10px; height: 10px;
+                border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+  .hide { display: none; }
+  footer { text-align: center; color: #90a4ae; font-size: .82em;
+           padding: 24px 0; }
 </style>
 </head>
 <body>
+
 <header>
-  <h1>充放電サイクル抽出ツール 追記版</h1>
-  <p>パラメータの意味説明と、「検証グラフ」「抽出結果」見出しを追加した版です。</p>
+  <h1>🔋 充放電サイクル特徴点抽出ツール</h1>
+  <p>T&D Graph CSV から 青(放電終了Ch1底) / 赤(充電終了ピーク) / 黄 / 緑 を自動抽出</p>
 </header>
+
 <main>
-  <section class="card">
-    <h2>パラメータ説明</h2>
-    <div class="grid">
-      <div class="item"><b>急上昇閾値 (V/step)</b><div class="note">Ch1 がどれだけ増えたら「急上昇」と判定するか。充電開始候補を見つける基準です。</div></div>
-      <div class="item"><b>急降下閾値 (V/step)</b><div class="note">Ch1 がどれだけ下がったら「急降下」と判定するか。赤丸・黄丸・緑丸の候補を見つける基準です。</div></div>
-      <div class="item"><b>Ch2 零近傍幅 (V)</b><div class="note">Ch2 が 0V 付近かどうかを判定する幅です。1回目降下と2回目降下の区別に使います。</div></div>
-      <div class="item"><b>緑丸オフセット (steps)</b><div class="note">2回目急降下の直後から何サンプル後を緑丸として採用するかを決めます。</div></div>
-      <div class="item"><b>急上昇マージ幅 (steps)</b><div class="note">近い急上昇を同じイベントとしてまとめる範囲です。1サイクル内の2段階上昇の誤分割を防ぎます。</div></div>
-      <div class="item"><b>急降下マージ幅 (steps)</b><div class="note">近い急降下を同じイベントとしてまとめる範囲です。同じ落ち込みの重複カウントを防ぎます。</div></div>
-    </div>
-  </section>
 
-  <section class="card">
-    <h2>検証グラフ</h2>
-    <div class="note">
-      元の波形グラフに対して、抽出した位置を重ねて確認する欄です。<br>
-      <span class="tag">青丸</span>充電開始直前（放電末の底）
-      <span class="tag">赤丸</span>充電終了 / 放電開始直前
-      <span class="tag">黄丸</span>2回目急降下直前
-      <span class="tag">緑丸</span>2回目急降下直後（下げ止まり）
-    </div>
-  </section>
+  <div class="card">
+    <h2>① CSVファイルを選択</h2>
+    <label for="file" class="drop-zone" id="dropZone">
+      <div class="icon">📁</div>
+      <div class="label"><b>クリック</b>または<b>ドラッグ＆ドロップ</b></div>
+      <div class="label" id="fileName" style="color:#667eea;font-weight:600;"></div>
+    </label>
+    <input type="file" id="file" accept=".csv,text/csv,text/plain">
+  </div>
 
-  <section class="card">
-    <h2>抽出結果</h2>
-    <div class="note">各サイクルについて、A〜F列に次の値を出力します。</div>
-    <ul>
-      <li>A列：青丸の日付</li>
-      <li>B列：青丸の時刻</li>
-      <li>C列：赤丸の時刻</li>
-      <li>D列：黄丸の Ch1 値</li>
-      <li>E列：緑丸の Ch1 値</li>
-      <li>F列：緑丸の Ch2 値</li>
-    </ul>
-    <div class="tablewrap">
-      <table>
-        <thead>
-          <tr><th>A_青丸_日付</th><th>B_青丸_時刻</th><th>C_赤丸_時刻</th><th>D_黄丸_Ch1</th><th>E_緑丸_Ch1</th><th>F_緑丸_Ch2</th></tr>
-        </thead>
-        <tbody>
-          <tr><td>2026-04-16</td><td>18:50:30</td><td>21:14:40</td><td>1.53076</td><td>1.38636</td><td>-0.20519</td></tr>
-          <tr><td>2026-04-16</td><td>23:32:10</td><td>01:58:10</td><td>1.53500</td><td>1.38940</td><td>-0.20530</td></tr>
-          <tr><td>2026-04-17</td><td>04:19:10</td><td>06:48:10</td><td>1.53639</td><td>1.39026</td><td>-0.20521</td></tr>
-        </tbody>
-      </table>
+  <div class="card">
+    <h2>② パラメータ</h2>
+
+    <div class="param-help">
+      <h3>💡 各パラメータの説明</h3>
+      <dl>
+        <dt>Ch2 状態判定閾値 [V]</dt>
+        <dd>
+          Ch2 の電圧から電池の動作状態を 3 分類する境界値です。<br>
+          <b>｜Ch2｜ &gt; 閾値</b> のとき充電(+) / 放電(-) 中と判定し、それ以下は「待機」とみなします。<br>
+          <span style="color:#d84315">👉 通常は <b>0.1</b> のままでOK。</span>
+          Ch2 の充放電電圧が ±0.2V 程度なら 0.1 が最適。
+          もしノイズが大きかったり、信号の振幅が小さい場合は
+          <b>振幅の半分程度</b> に設定してください（例: 振幅±0.05V なら 0.025）。
+        </dd>
+
+        <dt>下げ止まり経過秒 [s]</dt>
+        <dd>
+          放電が始まってから <b>緑丸（下げ止まり）</b> を採取するまでの経過時間です。<br>
+          放電開始直後は Ch1 が急降下し、数秒〜数十秒で一旦落ち着きます。この落ち着いたタイミングを緑丸とします。<br>
+          <span style="color:#d84315">👉 通常は <b>30</b> 秒でOK。</span>
+          急降下の持続時間が長い場合は 60〜120 に、短い場合は 10〜20 に調整してください。
+        </dd>
+
+        <dt>ヘッダスキップ行数</dt>
+        <dd>
+          CSV 先頭の見出し行数です。T&D Graph 標準エクスポートでは
+          「Date/Time / Channel / 単位」の <b>3 行</b> がヘッダです。<br>
+          <span style="color:#d84315">👉 T&D Graph の出力なら <b>3</b> のままでOK。</span>
+          他のCSV形式で見出しが 1 行しかない場合は 1 に変更してください。
+        </dd>
+      </dl>
+      <div class="tip">
+        📌 <b>動作確認の目安</b>: 解析実行後、下の「④ 検証グラフ」で
+        青丸が放電の底(Ch1最低値)に、赤丸が充電のピークにあることを確認してください。
+        ズレていたら閾値を調整すると改善します。
+      </div>
     </div>
-  </section>
+
+    <div class="params">
+      <label>
+        Ch2 状態判定閾値 [V]
+        <input type="number" id="thr" value="0.1" step="0.01">
+        <span class="hint">デフォルト 0.1 / ±この値で充電・放電・待機を分類</span>
+      </label>
+      <label>
+        下げ止まり経過秒 [s]
+        <input type="number" id="settle" value="30" step="5">
+        <span class="hint">デフォルト 30 / 放電開始から何秒後を緑丸とするか</span>
+      </label>
+      <label>
+        ヘッダスキップ行数
+        <input type="number" id="skip" value="3" step="1">
+        <span class="hint">デフォルト 3 / CSV先頭の見出し行数</span>
+      </label>
+    </div>
+    <button class="btn" id="runBtn" disabled>▶ 解析実行</button>
+  </div>
+
+  <div class="card hide" id="logCard">
+    <h2>処理ログ</h2>
+    <div id="log"></div>
+  </div>
+
+  <div class="card hide" id="resultCard">
+    <h2>③ 抽出結果</h2>
+    <div class="summary" id="summary"></div>
+    <div style="margin-top:14px;">
+      <span class="legend-dot" style="background:#2962ff"></span>B列 青 = 放電終了Ch1(底)
+      <span class="legend-dot" style="background:#d32f2f;margin-left:10px;"></span>C列 赤 = 充電終了Ch1
+      <span class="legend-dot" style="background:#f9a825;margin-left:10px;"></span>D列 黄 = 放電直前Ch1
+      <span class="legend-dot" style="background:#2e7d32;margin-left:10px;"></span>E/F 緑 = 下げ止まりCh1/Ch2
+    </div>
+    <button class="btn success" id="dlXlsx">⬇ Excel (.xlsx)</button>
+    <button class="btn success" id="dlCsv">⬇ CSV</button>
+    <div style="max-height:380px;overflow:auto;margin-top:12px;">
+      <table id="resultTable"></table>
+    </div>
+  </div>
+
+  <div class="card hide" id="chartCard">
+    <h2>④ 検証グラフ</h2>
+
+    <div class="chart-controls">
+      <b>表示範囲:</b>
+      <button class="btn small secondary" id="btnViewAll">全体</button>
+      <button class="btn small secondary" id="btnView3">先頭3サイクル</button>
+      <button class="btn small secondary" id="btnView5">先頭5サイクル</button>
+      <button class="btn small secondary" id="btnViewLast">直近3サイクル</button>
+      <span style="color:#cfd8dc;">|</span>
+      <label>
+        サイクル範囲:
+        <input type="number" id="rangeFrom" min="1" value="1" style="width:60px;">
+        〜
+        <input type="number" id="rangeTo" min="1" value="3" style="width:60px;">
+      </label>
+      <button class="btn small" id="btnViewRange">▶ 適用</button>
+      <span style="color:#cfd8dc;">|</span>
+      <button class="btn small secondary" id="btnResetZoom">🔄 ズームリセット</button>
+      <span style="color:#90a4ae;font-size:.8em;">
+        （グラフ上でホイール拡大 / ドラッグで範囲選択拡大）
+      </span>
+    </div>
+
+    <div class="chart-box full"><canvas id="chart1"></canvas></div>
+    <div class="chart-box ch2" style="margin-top:8px;"><canvas id="chart2"></canvas></div>
+  </div>
+
 </main>
+
+<footer>Battery Cycle Extractor v2 / ブラウザ内で完結・データはサーバー送信されません</footer>
+
+<script>
+// =======================================================================
+// コアロジック
+// =======================================================================
+function classifyState(ch2, thr) {
+  if (ch2 >  thr) return 'C';
+  if (ch2 < -thr) return 'D';
+  return 'I';
+}
+
+function parseCsv(text, skipRows) {
+  const lines = text.split(/\r?\n/);
+  const rows = [];
+  for (let i = skipRows; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const cells = line.split(',').map(c => c.replace(/^"|"$/g, '').trim());
+    if (cells.length < 4) continue;
+    const dt = new Date(cells[0].replace(' ', 'T'));
+    const ch1 = parseFloat(cells[2]);
+    const ch2 = parseFloat(cells[3]);
+    if (isNaN(dt.getTime()) || isNaN(ch1) || isNaN(ch2)) continue;
+    rows.push({ datetime: dt, ch1, ch2 });
+  }
+  return rows;
+}
+
+function extractCycles(rows, thr, settleSec) {
+  rows.forEach(r => r.state = classifyState(r.ch2, thr));
+  const events = [];
+  for (let i = 0; i < rows.length; i++) {
+    const prev = i > 0 ? rows[i-1].state : null;
+    if (rows[i].state !== prev) {
+      events.push({ idx: i, from: prev, to: rows[i].state, time: rows[i].datetime });
+    }
+  }
+
+  const cycles = [];
+  for (let k = 0; k < events.length; k++) {
+    const ev = events[k];
+    if (ev.from !== 'I' || ev.to !== 'C') continue;
+    const chargeStartIdx = ev.idx;
+
+    let blueIdx = null;
+    for (let j = k - 1; j >= 0; j--) {
+      if (events[j].from === 'D' && events[j].to === 'I') {
+        blueIdx = Math.max(events[j].idx - 1, 0); break;
+      }
+    }
+    if (blueIdx === null) blueIdx = Math.max(chargeStartIdx - 1, 0);
+
+    let redIdx = null, redEv = null;
+    for (let j = k + 1; j < events.length; j++) {
+      if (events[j].from === 'C' && events[j].to === 'I') {
+        redIdx = Math.max(events[j].idx - 1, 0); redEv = events[j]; break;
+      }
+    }
+    if (redIdx === null) continue;
+
+    let yellowIdx = null, yellowEv = null;
+    for (let j = k + 1; j < events.length; j++) {
+      if (events[j].from === 'I' && events[j].to === 'D'
+          && events[j].idx > redEv.idx) {
+        yellowIdx = Math.max(events[j].idx - 1, 0); yellowEv = events[j]; break;
+      }
+    }
+    if (yellowIdx === null) continue;
+
+    const tSettle = new Date(yellowEv.time.getTime() + settleSec * 1000);
+    let greenIdx = null;
+    for (let j = yellowEv.idx; j < rows.length; j++) {
+      if (rows[j].datetime >= tSettle && rows[j].state === 'D') {
+        greenIdx = j; break;
+      }
+    }
+    if (greenIdx === null) continue;
+
+    cycles.push({
+      cycle:       cycles.length + 1,
+      blue_time:   rows[blueIdx].datetime,
+      blue_ch1:    rows[blueIdx].ch1,
+      red_time:    rows[redIdx].datetime,
+      red_ch1:     rows[redIdx].ch1,
+      yellow_time: rows[yellowIdx].datetime,
+      yellow_ch1:  rows[yellowIdx].ch1,
+      green_time:  rows[greenIdx].datetime,
+      green_ch1:   rows[greenIdx].ch1,
+      green_ch2:   rows[greenIdx].ch2,
+    });
+  }
+  return cycles;
+}
+
+// =======================================================================
+// UI
+// =======================================================================
+const $ = id => document.getElementById(id);
+let currentFile = null, currentRows = null, currentCycles = null;
+let chart1 = null, chart2 = null;
+
+function log(msg) {
+  $('logCard').classList.remove('hide');
+  $('log').textContent += msg + '\n';
+  $('log').scrollTop = $('log').scrollHeight;
+}
+
+$('file').addEventListener('change', e => {
+  if (e.target.files.length) setFile(e.target.files[0]);
+});
+$('dropZone').addEventListener('dragover', e => {
+  e.preventDefault(); $('dropZone').classList.add('dragover');
+});
+$('dropZone').addEventListener('dragleave', () => $('dropZone').classList.remove('dragover'));
+$('dropZone').addEventListener('drop', e => {
+  e.preventDefault(); $('dropZone').classList.remove('dragover');
+  if (e.dataTransfer.files.length) setFile(e.dataTransfer.files[0]);
+});
+
+function setFile(f) {
+  currentFile = f;
+  $('fileName').textContent = `選択中: ${f.name} (${(f.size/1024/1024).toFixed(2)} MB)`;
+  $('runBtn').disabled = false;
+}
+
+$('runBtn').addEventListener('click', async () => {
+  if (!currentFile) return;
+  $('log').textContent = '';
+  log(`読込中: ${currentFile.name}`);
+  const t0 = performance.now();
+  const text = await currentFile.text();
+  const skip = parseInt($('skip').value, 10);
+  const rows = parseCsv(text, skip);
+  log(`${rows.length.toLocaleString()} 行を解析`);
+  if (rows.length === 0) { log('有効なデータが見つかりません'); return; }
+
+  const thr = parseFloat($('thr').value);
+  const settle = parseInt($('settle').value, 10);
+  const cycles = extractCycles(rows, thr, settle);
+  log(`検出サイクル数: ${cycles.length}`);
+  log(`処理時間: ${((performance.now()-t0)/1000).toFixed(2)} 秒`);
+
+  currentRows = rows; currentCycles = cycles;
+  renderResult();
+});
+
+function renderResult() {
+  const n = currentCycles.length;
+  const avg = k => n ? currentCycles.reduce((s,c)=>s+c[k],0)/n : 0;
+
+  $('summary').innerHTML = `
+    <div class="stat"><div class="v">${n}</div><div class="l">検出サイクル数</div></div>
+    <div class="stat"><div class="v">${avg('blue_ch1').toFixed(3)}V</div><div class="l">平均 青 放電終了</div></div>
+    <div class="stat"><div class="v">${avg('red_ch1').toFixed(3)}V</div><div class="l">平均 赤 充電終了</div></div>
+    <div class="stat"><div class="v">${avg('yellow_ch1').toFixed(3)}V</div><div class="l">平均 黄 放電直前</div></div>
+    <div class="stat"><div class="v">${avg('green_ch1').toFixed(3)}V</div><div class="l">平均 緑 下げ止まり</div></div>`;
+
+  let html = '<thead><tr>' +
+    '<th>A:#</th>' +
+    '<th>B:青Ch1</th><th>C:赤Ch1</th><th>D:黄Ch1</th><th>E:緑Ch1</th><th>F:緑Ch2</th>' +
+    '<th>G:青時刻(放電終了)</th><th>H:赤時刻(充電終了)</th><th>I:黄時刻</th><th>J:緑時刻</th>' +
+    '</tr></thead><tbody>';
+  currentCycles.forEach(c => {
+    html += `<tr>
+      <td>${c.cycle}</td>
+      <td>${c.blue_ch1.toFixed(5)}</td>
+      <td>${c.red_ch1.toFixed(5)}</td>
+      <td>${c.yellow_ch1.toFixed(5)}</td>
+      <td>${c.green_ch1.toFixed(5)}</td>
+      <td>${c.green_ch2.toFixed(5)}</td>
+      <td>${fmtDate(c.blue_time)}</td>
+      <td>${fmtDate(c.red_time)}</td>
+      <td>${fmtDate(c.yellow_time)}</td>
+      <td>${fmtDate(c.green_time)}</td></tr>`;
+  });
+  html += '</tbody>';
+  $('resultTable').innerHTML = html;
+
+  $('resultCard').classList.remove('hide');
+  $('chartCard').classList.remove('hide');
+
+  // 初期範囲: 全体
+  $('rangeFrom').max = n; $('rangeTo').max = n;
+  $('rangeFrom').value = 1;
+  $('rangeTo').value = Math.min(5, n);
+  renderChart(null, null);  // 全体表示
+}
+
+function fmtDate(d){
+  const p = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} `
+       + `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+/**
+ * グラフ描画
+ * @param {number|null} cycleFrom 1-based 開始サイクル (null=全体)
+ * @param {number|null} cycleTo   1-based 終了サイクル (null=全体)
+ */
+function renderChart(cycleFrom, cycleTo) {
+  if (!currentRows || !currentCycles.length) return;
+
+  let tMin = null, tMax = null;
+  let visibleCycles = currentCycles;
+
+  if (cycleFrom !== null && cycleTo !== null) {
+    cycleFrom = Math.max(1, Math.min(currentCycles.length, cycleFrom));
+    cycleTo   = Math.max(cycleFrom, Math.min(currentCycles.length, cycleTo));
+    visibleCycles = currentCycles.slice(cycleFrom - 1, cycleTo);
+    const cFrom = currentCycles[cycleFrom - 1];
+    const cTo   = currentCycles[cycleTo - 1];
+    // 範囲前後に少しマージンを入れる
+    const pad = 30 * 60 * 1000; // 30分
+    tMin = new Date(cFrom.blue_time.getTime() - pad);
+    // 末尾は次サイクルの青、なければ緑の後
+    const nextCycle = currentCycles[cycleTo]; // 1-based なので cycleTo が次インデックス
+    tMax = nextCycle
+      ? new Date(nextCycle.blue_time.getTime() + pad)
+      : new Date(cTo.green_time.getTime() + pad * 4);
+  }
+
+  // 範囲に応じてデータを間引き
+  let visibleRows = currentRows;
+  if (tMin && tMax) {
+    visibleRows = currentRows.filter(r => r.datetime >= tMin && r.datetime <= tMax);
+  }
+  const maxPoints = 4000;
+  const step = Math.max(1, Math.floor(visibleRows.length / maxPoints));
+  const sparse = visibleRows.filter((_,i)=> i % step === 0);
+
+  const ch1Data = sparse.map(r => ({x: r.datetime, y: r.ch1}));
+  const ch2Data = sparse.map(r => ({x: r.datetime, y: r.ch2}));
+
+  const makeMark = (points, color, label) => ({
+    label: label,
+    type: 'scatter',
+    data: points,
+    backgroundColor: 'transparent', borderColor: color, borderWidth: 2.5,
+    pointRadius: 8, pointHoverRadius: 10, pointStyle: 'circle', showLine: false,
+  });
+
+  const blueP   = visibleCycles.map(c => ({x:c.blue_time,   y:c.blue_ch1,   _cycle:c.cycle}));
+  const redP    = visibleCycles.map(c => ({x:c.red_time,    y:c.red_ch1,    _cycle:c.cycle}));
+  const yellowP = visibleCycles.map(c => ({x:c.yellow_time, y:c.yellow_ch1, _cycle:c.cycle}));
+  const greenP1 = visibleCycles.map(c => ({x:c.green_time,  y:c.green_ch1,  _cycle:c.cycle}));
+  const greenP2 = visibleCycles.map(c => ({x:c.green_time,  y:c.green_ch2,  _cycle:c.cycle}));
+
+  const xScale = {
+    type: 'time',
+    time: { tooltipFormat: 'yyyy-MM-dd HH:mm:ss' },
+    ticks: { maxRotation: 0, autoSkip: true }
+  };
+  if (tMin && tMax) { xScale.min = tMin; xScale.max = tMax; }
+
+  const zoomOptions = {
+    pan:  { enabled: true, mode: 'x', modifierKey: 'shift' },
+    zoom: {
+      wheel: { enabled: true },
+      drag:  { enabled: true, backgroundColor: 'rgba(102,126,234,0.15)' },
+      mode: 'x',
+    }
+  };
+
+  if (chart1) chart1.destroy();
+  chart1 = new Chart($('chart1'), {
+    type: 'line',
+    data: { datasets: [
+      { label: 'Ch1', data: ch1Data, borderColor: '#e53935',
+        borderWidth: 1.2, pointRadius: 0, tension: 0 },
+      makeMark(blueP,   '#2962ff', '青 放電終了'),
+      makeMark(redP,    '#d32f2f', '赤 充電終了'),
+      makeMark(yellowP, '#f9a825', '黄 放電直前'),
+      makeMark(greenP1, '#2e7d32', '緑 下げ止まり'),
+    ]},
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: false, parsing: false,
+      scales: { x: xScale, y: { title: { display: true, text: 'Ch1 (V)' } } },
+      plugins: {
+        legend: { position: 'bottom' },
+        zoom: zoomOptions,
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const p = ctx.raw;
+              const cyc = p._cycle ? ` [Cycle ${p._cycle}]` : '';
+              return `${ctx.dataset.label}${cyc}: ${p.y.toFixed(5)} V`;
+            }
+          }
+        }
+      }
+    }
+  });
+
+  if (chart2) chart2.destroy();
+  chart2 = new Chart($('chart2'), {
+    type: 'line',
+    data: { datasets: [
+      { label: 'Ch2', data: ch2Data, borderColor: '#b8a000',
+        borderWidth: 1.2, pointRadius: 0, tension: 0 },
+      makeMark(greenP2, '#2e7d32', '緑 Ch2'),
+    ]},
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: false, parsing: false,
+      scales: { x: xScale, y: { title: { display: true, text: 'Ch2 (V)' } } },
+      plugins: {
+        legend: { position: 'bottom' },
+        zoom: zoomOptions,
+      }
+    }
+  });
+}
+
+// ボタン操作
+$('btnViewAll').addEventListener('click', () => renderChart(null, null));
+$('btnView3').addEventListener('click', () => {
+  $('rangeFrom').value = 1; $('rangeTo').value = Math.min(3, currentCycles.length);
+  renderChart(1, Math.min(3, currentCycles.length));
+});
+$('btnView5').addEventListener('click', () => {
+  $('rangeFrom').value = 1; $('rangeTo').value = Math.min(5, currentCycles.length);
+  renderChart(1, Math.min(5, currentCycles.length));
+});
+$('btnViewLast').addEventListener('click', () => {
+  const n = currentCycles.length;
+  const from = Math.max(1, n - 2);
+  $('rangeFrom').value = from; $('rangeTo').value = n;
+  renderChart(from, n);
+});
+$('btnViewRange').addEventListener('click', () => {
+  const f = parseInt($('rangeFrom').value, 10);
+  const t = parseInt($('rangeTo').value, 10);
+  renderChart(f, t);
+});
+$('btnResetZoom').addEventListener('click', () => {
+  if (chart1) chart1.resetZoom();
+  if (chart2) chart2.resetZoom();
+});
+
+// =======================================================================
+// ダウンロード
+// =======================================================================
+function buildSheetData() {
+  const header = [
+    'A_サイクル番号',
+    'B_青_放電終了_Ch1(V)',
+    'C_赤_充電終了_Ch1(V)',
+    'D_黄_放電開始直前_Ch1(V)',
+    'E_緑_放電下げ止まり_Ch1(V)',
+    'F_緑_放電下げ止まり_Ch2(V)',
+    'G_青_時刻(放電終了)',
+    'H_赤_時刻(充電終了)',
+    'I_黄_時刻',
+    'J_緑_時刻'
+  ];
+  const rows = currentCycles.map(c => [
+    c.cycle,
+    c.blue_ch1, c.red_ch1, c.yellow_ch1, c.green_ch1, c.green_ch2,
+    fmtDate(c.blue_time), fmtDate(c.red_time),
+    fmtDate(c.yellow_time), fmtDate(c.green_time)
+  ]);
+  return [header, ...rows];
+}
+
+$('dlXlsx').addEventListener('click', () => {
+  const data = buildSheetData();
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  XLSX.utils.book_append_sheet(wb, ws, 'Cycles');
+  const base = currentFile.name.replace(/\.[^.]+$/,'');
+  XLSX.writeFile(wb, `${base}_cycles.xlsx`);
+});
+
+$('dlCsv').addEventListener('click', () => {
+  const data = buildSheetData();
+  const csv = data.map(r => r.join(',')).join('\r\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const base = currentFile.name.replace(/\.[^.]+$/,'');
+  a.download = `${base}_cycles.csv`;
+  a.click();
+});
+</script>
 </body>
 </html>
