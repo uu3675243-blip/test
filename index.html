@@ -7,6 +7,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 <style>
   * { box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
@@ -29,11 +30,27 @@
   .drop-zone .icon { font-size: 3em; color: #90a4ae; }
   .drop-zone .label { margin-top: 8px; color: #546e7a; }
   input[type=file] { display: none; }
+
+  /* パラメータ説明 */
+  .param-help {
+    background: #f0f4ff; border-left: 4px solid #667eea;
+    padding: 14px 18px; border-radius: 6px; margin-bottom: 12px;
+    font-size: .88em; line-height: 1.7;
+  }
+  .param-help h3 { margin: 0 0 6px; color: #3949ab; font-size: 1em; }
+  .param-help dl { margin: 0; display: grid;
+                   grid-template-columns: max-content 1fr; gap: 4px 12px; }
+  .param-help dt { font-weight: 700; color: #1a237e; }
+  .param-help dd { margin: 0; color: #37474f; }
+  .param-help .tip { margin-top: 8px; color: #546e7a; font-size: .9em; }
+
   .params { display: grid;
-            grid-template-columns: repeat(auto-fit,minmax(220px,1fr));
+            grid-template-columns: repeat(auto-fit,minmax(240px,1fr));
             gap: 14px; margin-top: 12px; }
   .params label { display: flex; flex-direction: column; gap: 4px;
                   font-size: .9em; color: #546e7a; }
+  .params label .hint { font-size: .78em; color: #90a4ae;
+                        font-weight: normal; }
   .params input { padding: 8px 10px; border: 1px solid #cfd8dc;
                   border-radius: 6px; font-size: 1em; }
   .btn { background: linear-gradient(135deg,#667eea,#764ba2); color: white;
@@ -42,7 +59,25 @@
          margin-right: 8px; margin-top: 8px; }
   .btn:disabled { opacity: .5; cursor: not-allowed; }
   .btn.secondary { background: #607d8b; }
+  .btn.small { padding: 6px 12px; font-size: .85em; }
   .btn.success { background: linear-gradient(135deg,#43a047,#2e7d32); }
+
+  /* グラフ関連 */
+  .chart-controls {
+    display: flex; flex-wrap: wrap; align-items: center;
+    gap: 10px; margin-bottom: 12px;
+    padding: 10px 14px; background: #f5f7fa; border-radius: 8px;
+  }
+  .chart-controls label { font-size: .88em; color: #546e7a;
+                          display: flex; align-items: center; gap: 6px; }
+  .chart-controls input[type=number] {
+    width: 70px; padding: 5px 8px; border: 1px solid #cfd8dc;
+    border-radius: 4px; font-size: .9em;
+  }
+  .chart-box { position: relative; }
+  .chart-box.full { height: 400px; }
+  .chart-box.ch2  { height: 180px; }
+
   table { width: 100%; border-collapse: collapse; margin-top: 12px;
           font-size: .85em; }
   th, td { padding: 5px 8px; border: 1px solid #e0e0e0; text-align: right;
@@ -70,7 +105,7 @@
 
 <header>
   <h1>🔋 充放電サイクル特徴点抽出ツール</h1>
-  <p>T&D Graph CSV から 青(放電終了Ch1最低値) / 赤(充電終了ピーク) / 黄 / 緑 を自動抽出</p>
+  <p>T&D Graph CSV から 青(放電終了Ch1底) / 赤(充電終了ピーク) / 黄 / 緑 を自動抽出</p>
 </header>
 
 <main>
@@ -87,15 +122,58 @@
 
   <div class="card">
     <h2>② パラメータ</h2>
+
+    <div class="param-help">
+      <h3>💡 各パラメータの説明</h3>
+      <dl>
+        <dt>Ch2 状態判定閾値 [V]</dt>
+        <dd>
+          Ch2 の電圧から電池の動作状態を 3 分類する境界値です。<br>
+          <b>｜Ch2｜ &gt; 閾値</b> のとき充電(+) / 放電(-) 中と判定し、それ以下は「待機」とみなします。<br>
+          <span style="color:#d84315">👉 通常は <b>0.1</b> のままでOK。</span>
+          Ch2 の充放電電圧が ±0.2V 程度なら 0.1 が最適。
+          もしノイズが大きかったり、信号の振幅が小さい場合は
+          <b>振幅の半分程度</b> に設定してください（例: 振幅±0.05V なら 0.025）。
+        </dd>
+
+        <dt>下げ止まり経過秒 [s]</dt>
+        <dd>
+          放電が始まってから <b>緑丸（下げ止まり）</b> を採取するまでの経過時間です。<br>
+          放電開始直後は Ch1 が急降下し、数秒〜数十秒で一旦落ち着きます。この落ち着いたタイミングを緑丸とします。<br>
+          <span style="color:#d84315">👉 通常は <b>30</b> 秒でOK。</span>
+          急降下の持続時間が長い場合は 60〜120 に、短い場合は 10〜20 に調整してください。
+        </dd>
+
+        <dt>ヘッダスキップ行数</dt>
+        <dd>
+          CSV 先頭の見出し行数です。T&D Graph 標準エクスポートでは
+          「Date/Time / Channel / 単位」の <b>3 行</b> がヘッダです。<br>
+          <span style="color:#d84315">👉 T&D Graph の出力なら <b>3</b> のままでOK。</span>
+          他のCSV形式で見出しが 1 行しかない場合は 1 に変更してください。
+        </dd>
+      </dl>
+      <div class="tip">
+        📌 <b>動作確認の目安</b>: 解析実行後、下の「④ 検証グラフ」で
+        青丸が放電の底(Ch1最低値)に、赤丸が充電のピークにあることを確認してください。
+        ズレていたら閾値を調整すると改善します。
+      </div>
+    </div>
+
     <div class="params">
-      <label>Ch2 状態判定閾値 [V]
+      <label>
+        Ch2 状態判定閾値 [V]
         <input type="number" id="thr" value="0.1" step="0.01">
+        <span class="hint">デフォルト 0.1 / ±この値で充電・放電・待機を分類</span>
       </label>
-      <label>下げ止まり経過秒 [s]
+      <label>
+        下げ止まり経過秒 [s]
         <input type="number" id="settle" value="30" step="5">
+        <span class="hint">デフォルト 30 / 放電開始から何秒後を緑丸とするか</span>
       </label>
-      <label>ヘッダスキップ行数
+      <label>
+        ヘッダスキップ行数
         <input type="number" id="skip" value="3" step="1">
+        <span class="hint">デフォルト 3 / CSV先頭の見出し行数</span>
       </label>
     </div>
     <button class="btn" id="runBtn" disabled>▶ 解析実行</button>
@@ -124,8 +202,30 @@
 
   <div class="card hide" id="chartCard">
     <h2>④ 検証グラフ</h2>
-    <canvas id="chart1" height="120"></canvas>
-    <canvas id="chart2" height="60" style="margin-top:8px;"></canvas>
+
+    <div class="chart-controls">
+      <b>表示範囲:</b>
+      <button class="btn small secondary" id="btnViewAll">全体</button>
+      <button class="btn small secondary" id="btnView3">先頭3サイクル</button>
+      <button class="btn small secondary" id="btnView5">先頭5サイクル</button>
+      <button class="btn small secondary" id="btnViewLast">直近3サイクル</button>
+      <span style="color:#cfd8dc;">|</span>
+      <label>
+        サイクル範囲:
+        <input type="number" id="rangeFrom" min="1" value="1" style="width:60px;">
+        〜
+        <input type="number" id="rangeTo" min="1" value="3" style="width:60px;">
+      </label>
+      <button class="btn small" id="btnViewRange">▶ 適用</button>
+      <span style="color:#cfd8dc;">|</span>
+      <button class="btn small secondary" id="btnResetZoom">🔄 ズームリセット</button>
+      <span style="color:#90a4ae;font-size:.8em;">
+        （グラフ上でホイール拡大 / ドラッグで範囲選択拡大）
+      </span>
+    </div>
+
+    <div class="chart-box full"><canvas id="chart1"></canvas></div>
+    <div class="chart-box ch2" style="margin-top:8px;"><canvas id="chart2"></canvas></div>
   </div>
 
 </main>
@@ -175,18 +275,14 @@ function extractCycles(rows, thr, settleSec) {
     if (ev.from !== 'I' || ev.to !== 'C') continue;
     const chargeStartIdx = ev.idx;
 
-    // 青 = 直前の D→I 遷移の1つ前 (放電期間の最後 = Ch1最低)
     let blueIdx = null;
     for (let j = k - 1; j >= 0; j--) {
       if (events[j].from === 'D' && events[j].to === 'I') {
         blueIdx = Math.max(events[j].idx - 1, 0); break;
       }
     }
-    if (blueIdx === null) {
-      blueIdx = Math.max(chargeStartIdx - 1, 0);  // 初回サイクル用フォールバック
-    }
+    if (blueIdx === null) blueIdx = Math.max(chargeStartIdx - 1, 0);
 
-    // 赤 = 次の C→I の1つ前
     let redIdx = null, redEv = null;
     for (let j = k + 1; j < events.length; j++) {
       if (events[j].from === 'C' && events[j].to === 'I') {
@@ -195,7 +291,6 @@ function extractCycles(rows, thr, settleSec) {
     }
     if (redIdx === null) continue;
 
-    // 黄 = 次の I→D の1つ前
     let yellowIdx = null, yellowEv = null;
     for (let j = k + 1; j < events.length; j++) {
       if (events[j].from === 'I' && events[j].to === 'D'
@@ -205,7 +300,6 @@ function extractCycles(rows, thr, settleSec) {
     }
     if (yellowIdx === null) continue;
 
-    // 緑 = I→D + settleSec 秒後
     const tSettle = new Date(yellowEv.time.getTime() + settleSec * 1000);
     let greenIdx = null;
     for (let j = yellowEv.idx; j < rows.length; j++) {
@@ -317,7 +411,12 @@ function renderResult() {
 
   $('resultCard').classList.remove('hide');
   $('chartCard').classList.remove('hide');
-  renderChart();
+
+  // 初期範囲: 全体
+  $('rangeFrom').max = n; $('rangeTo').max = n;
+  $('rangeFrom').value = 1;
+  $('rangeTo').value = Math.min(5, n);
+  renderChart(null, null);  // 全体表示
 }
 
 function fmtDate(d){
@@ -326,36 +425,103 @@ function fmtDate(d){
        + `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
-function renderChart() {
-  const step = Math.max(1, Math.floor(currentRows.length / 3000));
-  const sparse = currentRows.filter((_,i)=> i % step === 0);
+/**
+ * グラフ描画
+ * @param {number|null} cycleFrom 1-based 開始サイクル (null=全体)
+ * @param {number|null} cycleTo   1-based 終了サイクル (null=全体)
+ */
+function renderChart(cycleFrom, cycleTo) {
+  if (!currentRows || !currentCycles.length) return;
+
+  let tMin = null, tMax = null;
+  let visibleCycles = currentCycles;
+
+  if (cycleFrom !== null && cycleTo !== null) {
+    cycleFrom = Math.max(1, Math.min(currentCycles.length, cycleFrom));
+    cycleTo   = Math.max(cycleFrom, Math.min(currentCycles.length, cycleTo));
+    visibleCycles = currentCycles.slice(cycleFrom - 1, cycleTo);
+    const cFrom = currentCycles[cycleFrom - 1];
+    const cTo   = currentCycles[cycleTo - 1];
+    // 範囲前後に少しマージンを入れる
+    const pad = 30 * 60 * 1000; // 30分
+    tMin = new Date(cFrom.blue_time.getTime() - pad);
+    // 末尾は次サイクルの青、なければ緑の後
+    const nextCycle = currentCycles[cycleTo]; // 1-based なので cycleTo が次インデックス
+    tMax = nextCycle
+      ? new Date(nextCycle.blue_time.getTime() + pad)
+      : new Date(cTo.green_time.getTime() + pad * 4);
+  }
+
+  // 範囲に応じてデータを間引き
+  let visibleRows = currentRows;
+  if (tMin && tMax) {
+    visibleRows = currentRows.filter(r => r.datetime >= tMin && r.datetime <= tMax);
+  }
+  const maxPoints = 4000;
+  const step = Math.max(1, Math.floor(visibleRows.length / maxPoints));
+  const sparse = visibleRows.filter((_,i)=> i % step === 0);
+
   const ch1Data = sparse.map(r => ({x: r.datetime, y: r.ch1}));
   const ch2Data = sparse.map(r => ({x: r.datetime, y: r.ch2}));
 
-  const makeMark = (getx, gety, color) => ({
+  const makeMark = (points, color, label) => ({
+    label: label,
     type: 'scatter',
-    data: currentCycles.map(c => ({x: c[getx], y: c[gety]})),
-    backgroundColor: 'transparent', borderColor: color, borderWidth: 2,
-    pointRadius: 7, pointStyle: 'circle', showLine: false,
+    data: points,
+    backgroundColor: 'transparent', borderColor: color, borderWidth: 2.5,
+    pointRadius: 8, pointHoverRadius: 10, pointStyle: 'circle', showLine: false,
   });
+
+  const blueP   = visibleCycles.map(c => ({x:c.blue_time,   y:c.blue_ch1,   _cycle:c.cycle}));
+  const redP    = visibleCycles.map(c => ({x:c.red_time,    y:c.red_ch1,    _cycle:c.cycle}));
+  const yellowP = visibleCycles.map(c => ({x:c.yellow_time, y:c.yellow_ch1, _cycle:c.cycle}));
+  const greenP1 = visibleCycles.map(c => ({x:c.green_time,  y:c.green_ch1,  _cycle:c.cycle}));
+  const greenP2 = visibleCycles.map(c => ({x:c.green_time,  y:c.green_ch2,  _cycle:c.cycle}));
+
+  const xScale = {
+    type: 'time',
+    time: { tooltipFormat: 'yyyy-MM-dd HH:mm:ss' },
+    ticks: { maxRotation: 0, autoSkip: true }
+  };
+  if (tMin && tMax) { xScale.min = tMin; xScale.max = tMax; }
+
+  const zoomOptions = {
+    pan:  { enabled: true, mode: 'x', modifierKey: 'shift' },
+    zoom: {
+      wheel: { enabled: true },
+      drag:  { enabled: true, backgroundColor: 'rgba(102,126,234,0.15)' },
+      mode: 'x',
+    }
+  };
 
   if (chart1) chart1.destroy();
   chart1 = new Chart($('chart1'), {
     type: 'line',
     data: { datasets: [
       { label: 'Ch1', data: ch1Data, borderColor: '#e53935',
-        borderWidth: 1, pointRadius: 0, tension: 0 },
-      { label: '青 放電終了', ...makeMark('blue_time','blue_ch1','#2962ff') },
-      { label: '赤 充電終了', ...makeMark('red_time','red_ch1','#d32f2f') },
-      { label: '黄 放電直前', ...makeMark('yellow_time','yellow_ch1','#f9a825') },
-      { label: '緑 下げ止まり',...makeMark('green_time','green_ch1','#2e7d32') },
+        borderWidth: 1.2, pointRadius: 0, tension: 0 },
+      makeMark(blueP,   '#2962ff', '青 放電終了'),
+      makeMark(redP,    '#d32f2f', '赤 充電終了'),
+      makeMark(yellowP, '#f9a825', '黄 放電直前'),
+      makeMark(greenP1, '#2e7d32', '緑 下げ止まり'),
     ]},
     options: {
-      responsive: true, animation: false, parsing: false,
-      scales: {
-        x: { type: 'time', time: { tooltipFormat: 'yyyy-MM-dd HH:mm' } },
-        y: { title: { display: true, text: 'Ch1 (V)' } } },
-      plugins: { legend: { position: 'bottom' } }
+      responsive: true, maintainAspectRatio: false,
+      animation: false, parsing: false,
+      scales: { x: xScale, y: { title: { display: true, text: 'Ch1 (V)' } } },
+      plugins: {
+        legend: { position: 'bottom' },
+        zoom: zoomOptions,
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const p = ctx.raw;
+              const cyc = p._cycle ? ` [Cycle ${p._cycle}]` : '';
+              return `${ctx.dataset.label}${cyc}: ${p.y.toFixed(5)} V`;
+            }
+          }
+        }
+      }
     }
   });
 
@@ -364,17 +530,46 @@ function renderChart() {
     type: 'line',
     data: { datasets: [
       { label: 'Ch2', data: ch2Data, borderColor: '#b8a000',
-        borderWidth: 1, pointRadius: 0, tension: 0 },
-      { label: '緑 Ch2', ...makeMark('green_time','green_ch2','#2e7d32') },
+        borderWidth: 1.2, pointRadius: 0, tension: 0 },
+      makeMark(greenP2, '#2e7d32', '緑 Ch2'),
     ]},
     options: {
-      responsive: true, animation: false, parsing: false,
-      scales: { x: { type: 'time' },
-                y: { title: { display: true, text: 'Ch2 (V)' } } },
-      plugins: { legend: { position: 'bottom' } }
+      responsive: true, maintainAspectRatio: false,
+      animation: false, parsing: false,
+      scales: { x: xScale, y: { title: { display: true, text: 'Ch2 (V)' } } },
+      plugins: {
+        legend: { position: 'bottom' },
+        zoom: zoomOptions,
+      }
     }
   });
 }
+
+// ボタン操作
+$('btnViewAll').addEventListener('click', () => renderChart(null, null));
+$('btnView3').addEventListener('click', () => {
+  $('rangeFrom').value = 1; $('rangeTo').value = Math.min(3, currentCycles.length);
+  renderChart(1, Math.min(3, currentCycles.length));
+});
+$('btnView5').addEventListener('click', () => {
+  $('rangeFrom').value = 1; $('rangeTo').value = Math.min(5, currentCycles.length);
+  renderChart(1, Math.min(5, currentCycles.length));
+});
+$('btnViewLast').addEventListener('click', () => {
+  const n = currentCycles.length;
+  const from = Math.max(1, n - 2);
+  $('rangeFrom').value = from; $('rangeTo').value = n;
+  renderChart(from, n);
+});
+$('btnViewRange').addEventListener('click', () => {
+  const f = parseInt($('rangeFrom').value, 10);
+  const t = parseInt($('rangeTo').value, 10);
+  renderChart(f, t);
+});
+$('btnResetZoom').addEventListener('click', () => {
+  if (chart1) chart1.resetZoom();
+  if (chart2) chart2.resetZoom();
+});
 
 // =======================================================================
 // ダウンロード
