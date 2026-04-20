@@ -1,768 +1,425 @@
-<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Essence Order : The Last Note</title>
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>充放電サイクル特徴点抽出ツール (v2)</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 <style>
-:root{--bg:#100d08;--bg2:#1a160e;--parch:#f5f0e1;--text:#3d2b1f;--mut:#8b7355;--gold:#d4a843;--gold2:#c9953a;--dk:#2a1f14;--dn:#9b2c2c;--sh:0 6px 20px rgba(0,0,0,.3)}
-*{box-sizing:border-box;margin:0;padding:0}html,body{min-height:100vh}
-body{font-family:"Hiragino Mincho ProN","Yu Mincho","serif";color:#e8dcc8;background:radial-gradient(ellipse at 20% 10%,#1f1a12,var(--bg)),var(--bg)}
-button,input,select{font-family:inherit}
-.sh{max-width:960px;margin:0 auto;padding:10px}
-.top{background:rgba(42,31,20,.85);border:1px solid rgba(212,168,67,.2);border-radius:12px;padding:10px 14px;margin-bottom:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.top h1{font-size:17px;color:var(--gold);margin-right:auto;letter-spacing:.05em}
-.top input,.top select{height:30px;border-radius:6px;border:1px solid rgba(212,168,67,.3);background:rgba(255,255,255,.06);color:#e8dcc8;padding:0 8px;font-size:12px;width:100px}.top select{width:55px}
-button{appearance:none;border:none;height:32px;padding:0 12px;border-radius:6px;font-weight:700;cursor:pointer;font-size:11px;transition:.06s;letter-spacing:.03em}button:hover{transform:translateY(-1px)}button:disabled{opacity:.3;cursor:not-allowed;transform:none}
-.bg{background:linear-gradient(135deg,var(--gold),var(--gold2));color:var(--dk)}.bd{background:var(--dk);color:var(--gold);border:1px solid rgba(212,168,67,.3)}.bo{background:#2d6a4f;color:#fff}.br{background:var(--dn);color:#fff}
-.pills{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}.pl{padding:3px 8px;border-radius:99px;background:rgba(212,168,67,.1);border:1px solid rgba(212,168,67,.15);font-size:10px;color:var(--gold)}
-.msg{background:rgba(42,31,20,.9);border:1px solid rgba(212,168,67,.25);border-radius:10px;padding:10px 12px;font-size:13px;color:var(--gold);margin-bottom:8px}
-.pRow{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
-.pc{flex:1 1 140px;padding:8px 10px;border-radius:10px;background:rgba(42,31,20,.7);border:1px solid rgba(212,168,67,.15)}.pc.act{border-color:var(--gold);box-shadow:0 0 8px rgba(212,168,67,.3)}.pc .nm{font-size:13px;font-weight:700;color:var(--gold)}.pc .inf{font-size:10px;color:rgba(232,220,200,.5);margin-top:2px}
-.fieldBox{background:var(--parch);color:var(--text);border-radius:14px;box-shadow:var(--sh);padding:14px;margin-bottom:8px}
-.fieldBox h2{font-size:14px;margin-bottom:8px;color:var(--dk)}
-.slots{display:flex;justify-content:center;gap:14px;margin-bottom:6px}
-.slot{width:96px;min-height:140px;border-radius:12px;border:2px dashed rgba(139,115,85,.4);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;transition:.15s;padding:8px;background:rgba(255,252,245,.6);position:relative}
-.slot.sel{border-color:var(--gold);background:rgba(212,168,67,.12);box-shadow:0 0 0 3px rgba(212,168,67,.2)}
-.slot .sLbl{font-size:9px;color:var(--mut);font-weight:700;text-transform:uppercase;letter-spacing:.1em}
-.slot .sEmoji{font-size:32px}.slot .sNum{font-size:24px;font-weight:900}.slot .sName{font-size:10px;color:var(--mut)}
-.slot .sStack{position:absolute;bottom:4px;right:6px;font-size:9px;color:var(--dn);font-weight:700}
-.comboLbl{font-size:12px;font-weight:700;color:#6b21a8}
-.phBox{background:rgba(42,31,20,.92);border:1px solid rgba(212,168,67,.3);border-radius:10px;padding:12px;margin-bottom:8px;display:none;color:#e8dcc8}.phBox.show{display:block}
-.phT{font-size:12px;font-weight:700;color:var(--gold);margin-bottom:3px}.phD{font-size:11px;color:rgba(232,220,200,.6);margin-bottom:8px}
-.actRow{display:flex;flex-wrap:wrap;gap:6px}
-.handBox{margin-bottom:8px}.handH{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}.handH .t{font-size:15px;font-weight:700;color:var(--gold)}.handH .s{font-size:10px;color:rgba(232,220,200,.4)}
-.handScr{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}
-.hc{flex:0 0 62px;height:86px;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:#fff;font-weight:700;cursor:pointer;border:2px solid transparent;transition:.12s;user-select:none;overflow:hidden;padding:4px 2px;position:relative}
-.hc .hE{font-size:11px;line-height:1;opacity:.9}.hc .hN{font-size:20px;font-weight:900;line-height:1}.hc .hL{font-size:8px;opacity:.7;line-height:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
-.hc.sel{transform:translateY(-6px);border-color:var(--gold);box-shadow:0 8px 20px rgba(212,168,67,.3)}
-.hc.excl{border-color:var(--dn);box-shadow:0 0 0 2px rgba(155,44,44,.5)}
-.hc.banned{opacity:.5;filter:grayscale(.4)}
-.cR{background:linear-gradient(135deg,#c0392b,#96281b)}.cB{background:linear-gradient(135deg,#2874a6,#1b4f72)}.cY{background:linear-gradient(135deg,#b7950b,#7d6608)}.cG{background:linear-gradient(135deg,#1e8449,#145a32)}.cP{background:linear-gradient(135deg,#2c2c3a,#1a1a2e)}
-.btmBox{background:var(--parch);color:var(--text);border-radius:14px;box-shadow:var(--sh);padding:12px}
-.tabH{display:flex;gap:4px;margin-bottom:8px}.tabB{height:26px;border-radius:5px;font-size:10px;font-weight:700;padding:0 10px;background:rgba(139,115,85,.15);color:var(--mut);border:none;cursor:pointer}.tabB.act{background:var(--gold);color:var(--dk)}
-.logScr{max-height:350px;overflow:auto;display:grid;gap:4px}
-.logI{padding:5px 8px;border-radius:6px;background:rgba(245,240,225,.7);border:1px solid rgba(139,115,85,.2)}.logI .lt{font-size:11px;font-weight:700;color:var(--dk)}.logI .ls{font-size:9px;color:var(--mut)}
-.ruleW{font-size:12px;line-height:1.8;color:var(--text)}.ruleW h3{font-size:13px;margin:8px 0 3px;color:var(--dk)}.ruleW table{width:100%;border-collapse:collapse;font-size:11px;margin:6px 0}.ruleW th,.ruleW td{padding:4px 6px;border:1px solid rgba(139,115,85,.3);text-align:center}.ruleW th{background:rgba(212,168,67,.15);color:var(--dk)}
-.toast{position:fixed;right:10px;bottom:10px;z-index:1000;background:rgba(26,22,14,.95);color:var(--gold);padding:8px 12px;border-radius:8px;border:1px solid rgba(212,168,67,.3);opacity:0;transform:translateY(8px);pointer-events:none;transition:.2s;max-width:300px;font-size:12px}.toast.show{opacity:1;transform:translateY(0)}
-.ov{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:12px;background:rgba(0,0,0,.6);z-index:999}.ov.show{display:flex}.modal{width:min(440px,100%);background:var(--parch);color:var(--text);border-radius:14px;box-shadow:var(--sh);padding:18px}.modal h3{color:var(--dk);margin-bottom:6px}.modal p{color:var(--mut);margin-bottom:12px;line-height:1.7;font-size:13px}
-@media(max-width:600px){.top{flex-direction:column;align-items:stretch}.top h1{text-align:center;margin-bottom:4px}.top input,.top select{width:100%}.slot{width:80px;min-height:116px}.slot .sEmoji{font-size:26px}.slot .sNum{font-size:20px}.hc{flex:0 0 54px;height:76px}.hc .hN{font-size:17px}}
-</style></head><body>
-<div class="sh">
-<div class="top">
-  <h1>🧪 Essence Order : The Last Note</h1>
-  <input id="pName" type="text" maxlength="20" placeholder="調香師名">
-  <select id="maxP"></select>
-  <input id="rInput" type="text" maxlength="12" placeholder="部屋番号">
-  <button class="bg" id="cBtn">工房作成</button><button class="bd" id="jBtn">参加</button><button class="bd" id="cpBtn" disabled>📋</button>
-  <button class="bo" id="sBtn" disabled>調合開始</button><button class="br" id="rsBtn" disabled>初期化</button>
-  <span class="pl" id="plRoom">-</span><span class="pl" id="plSeat">-</span>
-</div>
-<div class="pills"><span class="pl" id="plTurn">手番:-</span><span class="pl" id="plPhase">-</span><span class="pl" id="plDeck">山:0</span><span class="pl" id="plDisc">捨:0</span><span class="pl" id="plExcl">除:0</span><span class="pl" id="plBan" style="display:none">🚫-</span></div>
-<div class="msg" id="msg">🧪 工房を作成 or 参加</div>
-<div class="pRow" id="pRow"></div>
-<div class="fieldBox"><h2>🌸 香りのノート <span id="comboLbl" class="comboLbl"></span></h2><div class="slots" id="slots"></div></div>
-<div class="phBox" id="phBox"><div class="phT" id="phT">-</div><div class="phD" id="phD">-</div><div class="actRow" id="phC"></div></div>
-<div class="handBox"><div class="handH"><div class="t">📜 手札 <span id="hCnt">0</span>枚</div><div class="s" id="hHelp">-</div></div><div class="handScr" id="handScr"></div></div>
-<div class="btmBox">
-  <div class="tabH"><button id="tLog" class="tabB act">調合記録</button><button id="tRule" class="tabB">ルールブック</button></div>
-  <div id="logP"><div class="logScr" id="logL"></div></div>
-  <div id="ruleP" style="display:none"><div class="ruleW">
-    <h3>⚗️ アクション</h3><p><b>A.調合:</b> 手札1〜3枚→1枚除外+残りで場入替→役判定。<br><b>B.補充:</b> 山札1枚。毒ならターン終了。<br><b>C.揮発:</b> 禁止色カード1枚捨て+2枚ドロー。</p>
-    <h3>🎵 役</h3><table><tr><th>役</th><th>条件</th><th>効果</th></tr>
-    <tr><td>モノトーン</td><td>同色3枚</td><td>次プレイヤー2枚ドロー</td></tr>
-    <tr><td>グラデーション</td><td>同色+連番</td><td>追加1枚除外(素材のみ)</td></tr>
-    <tr><td>ハーモニー</td><td>全色異なる</td><td>毒薬を渡す/場設置</td></tr>
-    <tr><td>エッセンス</td><td>同数字</td><td>場リセット+禁止色+場毒薬譲渡可</td></tr></table>
-    <h3>☠️ 毒薬</h3><p>引くとターン終了。<b>デトックス:</b> 2枚→除外+1枚ドロー+バリア。<br><b>グラデーション追加除外で毒薬は選択不可。</b></p>
-    <h3>🚫 禁止色</h3><p>エッセンスで指定。1周で自動解除。<br><b>揮発:</b> 禁止色カード1枚捨て+山札2枚ドロー。</p>
-    <h3>🍷 スポット・ポイズン熟成</h3><p>場に毒薬がある間、毎ターン終了時に山札1枚が蓄積。<br>そのスロット利用者が毒薬+蓄積全取得。</p>
-  </div></div>
-</div></div>
-<div id="toast" class="toast"></div>
-<div id="resOv" class="ov"><div class="modal"><h3 id="resT">🏆</h3><p id="resB">-</p><button class="bd" id="resX">閉じる</button></div></div>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+           "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+         margin: 0; padding: 0; background: #f5f7fa; color: #2c3e50; }
+  header { background: linear-gradient(135deg,#667eea,#764ba2); color: white;
+           padding: 24px 32px; box-shadow: 0 2px 8px rgba(0,0,0,.1); }
+  header h1 { margin: 0; font-size: 1.5em; }
+  header p { margin: 6px 0 0; opacity: .9; font-size: .9em; }
+  main { max-width: 1400px; margin: 24px auto; padding: 0 24px; }
+  .card { background: white; border-radius: 12px; padding: 24px;
+          margin-bottom: 20px; box-shadow: 0 2px 12px rgba(0,0,0,.06); }
+  .card h2 { margin-top: 0; color: #34495e; font-size: 1.15em;
+             border-left: 4px solid #667eea; padding-left: 10px; }
+  .drop-zone { border: 2px dashed #b0bec5; border-radius: 10px;
+               padding: 40px; text-align: center; cursor: pointer;
+               transition: all .2s; }
+  .drop-zone:hover, .drop-zone.dragover { background: #eef2ff;
+                                           border-color: #667eea; }
+  .drop-zone .icon { font-size: 3em; color: #90a4ae; }
+  .drop-zone .label { margin-top: 8px; color: #546e7a; }
+  input[type=file] { display: none; }
+  .params { display: grid;
+            grid-template-columns: repeat(auto-fit,minmax(220px,1fr));
+            gap: 14px; margin-top: 12px; }
+  .params label { display: flex; flex-direction: column; gap: 4px;
+                  font-size: .9em; color: #546e7a; }
+  .params input { padding: 8px 10px; border: 1px solid #cfd8dc;
+                  border-radius: 6px; font-size: 1em; }
+  .btn { background: linear-gradient(135deg,#667eea,#764ba2); color: white;
+         border: none; padding: 10px 22px; border-radius: 6px;
+         cursor: pointer; font-size: .95em; font-weight: 600;
+         margin-right: 8px; margin-top: 8px; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn.secondary { background: #607d8b; }
+  .btn.success { background: linear-gradient(135deg,#43a047,#2e7d32); }
+  table { width: 100%; border-collapse: collapse; margin-top: 12px;
+          font-size: .85em; }
+  th, td { padding: 5px 8px; border: 1px solid #e0e0e0; text-align: right;
+           white-space: nowrap; }
+  th { background: #eceff1; color: #37474f; font-weight: 600;
+       position: sticky; top: 0; }
+  td:first-child, th:first-child { text-align: center; }
+  tr:nth-child(even) td { background: #fafbfc; }
+  .summary { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; }
+  .stat { background: #eef2ff; padding: 10px 18px; border-radius: 8px;
+          min-width: 140px; }
+  .stat .v { font-size: 1.6em; font-weight: 700; color: #667eea; }
+  .stat .l { font-size: .82em; color: #546e7a; }
+  #log { max-height: 140px; overflow-y: auto; font-family: monospace;
+         font-size: .85em; background: #263238; color: #aed581;
+         padding: 12px; border-radius: 6px; white-space: pre-wrap; }
+  .legend-dot { display: inline-block; width: 10px; height: 10px;
+                border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+  .hide { display: none; }
+  footer { text-align: center; color: #90a4ae; font-size: .82em;
+           padding: 24px 0; }
+</style>
+</head>
+<body>
 
-<!-- ═══ Firebase SDK (compat) ═══ -->
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<header>
+  <h1>🔋 充放電サイクル特徴点抽出ツール</h1>
+  <p>T&D Graph CSV から 青(放電終了Ch1最低値) / 赤(充電終了ピーク) / 黄 / 緑 を自動抽出</p>
+</header>
+
+<main>
+
+  <div class="card">
+    <h2>① CSVファイルを選択</h2>
+    <label for="file" class="drop-zone" id="dropZone">
+      <div class="icon">📁</div>
+      <div class="label"><b>クリック</b>または<b>ドラッグ＆ドロップ</b></div>
+      <div class="label" id="fileName" style="color:#667eea;font-weight:600;"></div>
+    </label>
+    <input type="file" id="file" accept=".csv,text/csv,text/plain">
+  </div>
+
+  <div class="card">
+    <h2>② パラメータ</h2>
+    <div class="params">
+      <label>Ch2 状態判定閾値 [V]
+        <input type="number" id="thr" value="0.1" step="0.01">
+      </label>
+      <label>下げ止まり経過秒 [s]
+        <input type="number" id="settle" value="30" step="5">
+      </label>
+      <label>ヘッダスキップ行数
+        <input type="number" id="skip" value="3" step="1">
+      </label>
+    </div>
+    <button class="btn" id="runBtn" disabled>▶ 解析実行</button>
+  </div>
+
+  <div class="card hide" id="logCard">
+    <h2>処理ログ</h2>
+    <div id="log"></div>
+  </div>
+
+  <div class="card hide" id="resultCard">
+    <h2>③ 抽出結果</h2>
+    <div class="summary" id="summary"></div>
+    <div style="margin-top:14px;">
+      <span class="legend-dot" style="background:#2962ff"></span>B列 青 = 放電終了Ch1(底)
+      <span class="legend-dot" style="background:#d32f2f;margin-left:10px;"></span>C列 赤 = 充電終了Ch1
+      <span class="legend-dot" style="background:#f9a825;margin-left:10px;"></span>D列 黄 = 放電直前Ch1
+      <span class="legend-dot" style="background:#2e7d32;margin-left:10px;"></span>E/F 緑 = 下げ止まりCh1/Ch2
+    </div>
+    <button class="btn success" id="dlXlsx">⬇ Excel (.xlsx)</button>
+    <button class="btn success" id="dlCsv">⬇ CSV</button>
+    <div style="max-height:380px;overflow:auto;margin-top:12px;">
+      <table id="resultTable"></table>
+    </div>
+  </div>
+
+  <div class="card hide" id="chartCard">
+    <h2>④ 検証グラフ</h2>
+    <canvas id="chart1" height="120"></canvas>
+    <canvas id="chart2" height="60" style="margin-top:8px;"></canvas>
+  </div>
+
+</main>
+
+<footer>Battery Cycle Extractor v2 / ブラウザ内で完結・データはサーバー送信されません</footer>
 
 <script>
-/* ============================================================
-   🔥 Firebase 設定 — ここだけ自分の値に書き換える
-   ============================================================ */
-var FIREBASE_CONFIG = {
-  apiKey:            "AIzaSyCoEeumzlbjtEGEdHglkwKrmW8JhwFIfwQ",
-  authDomain:        "deadman-s-bullet.firebaseapp.com",
-  databaseURL:       "https://deadman-s-bullet-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId:         "deadman-s-bullet",
-  storageBucket:     "deadman-s-bullet.firebasestorage.app",
-  messagingSenderId: "102535573598",
-  appId:             "1:102535573598:web:786e82d26aa437001344cf"
-};
-/* ============================================================ */
-
-firebase.initializeApp(FIREBASE_CONFIG);
-var db = firebase.database();
-
-/* ─── Constants ─── */
-var CN={R:'フローラル',B:'ハーバル',Y:'スパイシー',G:'ウッディ',P:'毒薬'};
-var CE={R:'🌹',B:'🌿',Y:'🌶️',G:'🌲',P:'☠️'};
-var CC={R:'cR',B:'cB',Y:'cY',G:'cG',P:'cP'};
-var SN=['TOP','MIDDLE','BASE'];
-var COLORS=['R','B','Y','G'];
-var HAND_SIZE=7, FIELD_N=3, LOG_MAX=80;
-var PHL={choose:'アクション選択',restock_chain:'補充後',pending_draw:'強制ドロー',grad_extra:'グラデ除外',harmony_act:'ハーモニー',essence_setup:'エッセンス'};
-
-/* ─── Local state ─── */
-var SK={token:'eo4_tk',roomId:'eo4_rm',name:'eo4_nm'};
-var S={token:ldTk(),roomId:localStorage.getItem(SK.roomId)||'',name:localStorage.getItem(SK.name)||'',
-  st:null,unsub:null,pend:false,shown:null,
-  selCards:[],exclId:'',selSlots:[],selFlock:'',selBan:'',selPoisonTarget:-1};
-var E={};
-
-/* ─── DOM refs ─── */
-['pName','maxP','rInput','cBtn','jBtn','cpBtn','sBtn','rsBtn','plRoom','plSeat','plTurn','plPhase','plDeck','plDisc','plExcl','plBan','msg','pRow','slots','comboLbl','phBox','phT','phD','phC','hCnt','hHelp','handScr','tLog','tRule','logP','ruleP','logL','toast','resOv','resT','resB','resX'].forEach(function(id){E[id]=document.getElementById(id);});
-
-/* ═══════════════════════════════════════
-   Firebase helpers
-   ═══════════════════════════════════════ */
-function roomRef(rid){ return db.ref('rooms/'+rid); }
-
-function txn(rid, fn){
-  return roomRef(rid).transaction(function(cur){
-    if(!cur) return cur;
-    var st = cur;
-    try{ fn(st); } catch(e){ console.error('txn error',e); return; /* abort */ }
-    return st;
-  });
+// =======================================================================
+// コアロジック
+// =======================================================================
+function classifyState(ch2, thr) {
+  if (ch2 >  thr) return 'C';
+  if (ch2 < -thr) return 'D';
+  return 'I';
 }
 
-function subscribe(rid){
-  if(S.unsub) S.unsub();
-  var ref = roomRef(rid);
-  var handler = ref.on('value', function(snap){
-    var v = snap.val();
-    if(!v) return;
-    S.st = v;
-    renderAll();
-    maybeRes();
-  });
-  S.unsub = function(){ ref.off('value', handler); };
-}
-
-/* ═══════════════════════════════════════
-   Game engine (pure functions on state obj)
-   ═══════════════════════════════════════ */
-function uid(){ return Math.random().toString(36).slice(2)+Date.now().toString(36); }
-function ldTk(){var t=localStorage.getItem(SK.token);if(!t){t='eo4_'+uid();localStorage.setItem(SK.token,t);}return t;}
-function svN(){S.name=(E.pName.value||'').trim().slice(0,20);localStorage.setItem(SK.name,S.name);}
-
-function genRoomId(){ return Math.random().toString(36).slice(2,8).toUpperCase(); }
-
-function seatByTk(st,tk){ var ps=st.players||[]; for(var i=0;i<ps.length;i++){if(ps[i].token===tk)return ps[i].seat;} return ''; }
-function player(st,seat){ var ps=st.players||[]; for(var i=0;i<ps.length;i++){if(ps[i].seat===seat)return ps[i];} return null; }
-function seatName(st,seat){ var p=player(st,seat); return p?p.name:seat; }
-function nextSeat(st,seat){ var ps=st.players||[]; var idx=-1; for(var i=0;i<ps.length;i++){if(ps[i].seat===seat){idx=i;break;}} if(idx<0)return seat; return ps[(idx+1)%ps.length].seat; }
-function hasBarrier(p,ts){ return Number(p&&p.barrierUntil||0)>Number(ts||0); }
-
-function shuffle(arr){ var a=arr.slice(); for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=a[i];a[i]=a[j];a[j]=t;} return a; }
-
-function createDeck(){
-  var d=[];
-  COLORS.forEach(function(c){for(var v=1;v<=12;v++){d.push({id:c+'_'+v+'_'+uid().slice(0,6),c:c,v:v});}});
-  for(var i=0;i<4;i++){d.push({id:'P_'+i+'_'+uid().slice(0,6),c:'P',v:0});}
-  return d;
-}
-
-function sortHand(h){ if(!h)return; h.sort(function(a,b){ var cd=cSort(a.c)-cSort(b.c);if(cd)return cd; var av=a.c==='P'?99:a.v,bv=b.c==='P'?99:b.v;return av-bv; }); }
-function cSort(c){return {R:0,B:1,Y:2,G:3,P:4}[c]||9;}
-
-function refillDeck(st){
-  if(st.deck&&st.deck.length)return;
-  if(!st.discard||!st.discard.length)return;
-  st.deck=shuffle(st.discard); st.discard=[];
-  gLog(st,'捨て札→山札再構築');
-}
-function drawCard(st){ if(!st.deck||!st.deck.length)refillDeck(st); return st.deck&&st.deck.length?st.deck.shift():null; }
-function drawToHand(st,seat,cnt){
-  var p=player(st,seat); if(!p)return;
-  for(var i=0;i<cnt;i++){var c=drawCard(st);if(!c)break;p.hand=p.hand||[];p.hand.push(c);}
-  sortHand(p.hand);
-}
-
-function findCard(cards,id){ if(!cards)return null; for(var i=0;i<cards.length;i++){if(cards[i].id===id)return cards[i];} return null; }
-function removeCard(cards,id){ if(!cards)return null; for(var i=0;i<cards.length;i++){if(cards[i].id===id)return cards.splice(i,1)[0];} return null; }
-
-function normalizeT(st){
-  var ts=Number(st.turnSerial||1);
-  if(st.bannedColor&&ts>=Number(st.bannedExpire||0)){st.bannedColor='';st.bannedExpire=0;}
-  (st.players||[]).forEach(function(p){if(Number(p.barrierUntil||0)&&ts>=Number(p.barrierUntil||0))p.barrierUntil=0;});
-}
-
-function receivePoison(st,ts,poison){
-  var p=player(st,ts);
-  if(!p){st.discard=st.discard||[];st.discard.push(poison);return;}
-  if(hasBarrier(p,st.turnSerial)){st.discard.push(poison);gLog(st,seatName(st,ts)+' 障壁で毒薬無効化');return;}
-  p.hand=p.hand||[];p.hand.push(poison);sortHand(p.hand);
-}
-
-function maturePoisonSpots(st){
-  (st.field||[]).forEach(function(slot){
-    if(slot&&slot.card&&slot.card.c==='P'){var c=drawCard(st);if(c){slot.stack=slot.stack||[];slot.stack.push(c);}}
-  });
-}
-
-function pickupSlot(st,seat,idx){
-  var slot=(st.field||[])[idx]; if(!slot||!slot.card)return [];
-  var out=[];
-  if(slot.card.c==='P'){
-    out.push(slot.card);(slot.stack||[]).forEach(function(c){out.push(c);});
-    gLog(st,seatName(st,seat)+' 毒スポットから引取'+(slot.stack&&slot.stack.length?'(熟成'+slot.stack.length+'枚)':''));
-  } else { out.push(slot.card); }
-  return out;
-}
-
-function detectCombo(field){
-  var cards=(field||[]).map(function(s){return s&&s.card?s.card:null;});
-  if(cards.some(function(c){return !c||c.c==='P';}))return {type:'',label:''};
-  var cols=cards.map(function(c){return c.c;}),nums=cards.map(function(c){return Number(c.v);});
-  var sameN=nums.every(function(v){return v===nums[0];}),sameC=cols.every(function(c){return c===cols[0];});
-  var diffC=(function(){var s={};cols.forEach(function(c){s[c]=1;});return Object.keys(s).length===3;})();
-  if(sameN)return{type:'ESSENCE',label:'エッセンス'};
-  if(sameC&&isRun(nums))return{type:'GRADATION',label:'グラデーション'};
-  if(diffC)return{type:'HARMONY',label:'ハーモニー'};
-  if(sameC)return{type:'MONOTONE',label:'モノトーン'};
-  return{type:'',label:''};
-}
-function isRun(nums){var u=[];nums.forEach(function(n){if(u.indexOf(n)<0)u.push(n);});u.sort(function(a,b){return a-b;});if(u.length!==3)return false;for(var s=1;s<=12;s++){var seq=[s,w12(s+1),w12(s+2)].sort(function(a,b){return a-b;});if(String(seq)===String(u))return true;}return false;}
-function w12(n){var x=n;while(x>12)x-=12;while(x<1)x+=12;return x;}
-
-function gLog(st,text){ st.logs=st.logs||[]; st.logs.push({at:new Date().toISOString(),text:text}); if(st.logs.length>LOG_MAX)st.logs=st.logs.slice(-LOG_MAX); }
-
-function finishTurn(st,seat){
-  if(st.status==='ended')return;
-  maturePoisonSpots(st);
-  st.turnSeat=nextSeat(st,seat);
-  st.turnSerial=Number(st.turnSerial||1)+1;
-  st.drewThisTurn=false;st.lastDrawn='';st.phase='choose';
-  if(st.forceDraw>0)st.phase='pending_draw';
-  normalizeT(st);
-  gLog(st,seatName(st,st.turnSeat)+' の手番');
-}
-
-function checkWin(st,seat){
-  var p=player(st,seat);sortHand(p.hand);
-  if(!p.hand||p.hand.length===0){
-    st.status='ended';st.winnerSeat=seat;
-    st.resultSummary=seatName(st,seat)+' の勝利！最後の香りが完成した';
-    st.finishedAt=new Date().toISOString();
-    gLog(st,st.resultSummary);
+function parseCsv(text, skipRows) {
+  const lines = text.split(/\r?\n/);
+  const rows = [];
+  for (let i = skipRows; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const cells = line.split(',').map(c => c.replace(/^"|"$/g, '').trim());
+    if (cells.length < 4) continue;
+    const dt = new Date(cells[0].replace(' ', 'T'));
+    const ch1 = parseFloat(cells[2]);
+    const ch2 = parseFloat(cells[3]);
+    if (isNaN(dt.getTime()) || isNaN(ch1) || isNaN(ch2)) continue;
+    rows.push({ datetime: dt, ch1, ch2 });
   }
+  return rows;
 }
 
-function fmtCard(c){return c.c==='P'?'☠毒薬':(CE[c.c]||'')+CN[c.c]+c.v;}
-
-/* ═══════════════════════════════════════
-   Actions (transaction-based)
-   ═══════════════════════════════════════ */
-function assertTurn(st,seat){
-  if(st.status!=='playing')throw new Error('対局中ではありません');
-  if(st.turnSeat!==seat)throw new Error('あなたの手番ではありません');
-}
-
-function createRoom(){
-  svN();
-  var rid=genRoomId();
-  var name=S.name||'調香師1';
-  var maxP=Number(E.maxP.value||2);
-  var st={
-    roomId:rid,status:'waiting',maxPlayers:maxP,
-    players:[{seat:'P1',token:S.token,name:name,hand:[],barrierUntil:0,declared:''}],
-    deck:[],discard:[],excluded:[],
-    field:[{slot:'TOP',card:null,stack:[]},{slot:'MIDDLE',card:null,stack:[]},{slot:'BASE',card:null,stack:[]}],
-    turnSeat:'P1',turnSerial:1,forceDraw:0,forceDrawSrc:'',
-    bannedColor:'',bannedExpire:0,phase:'choose',
-    drewThisTurn:false,lastDrawn:'',
-    winnerSeat:'',resultSummary:'',finishedAt:'',logs:[]
-  };
-  gLog(st,name+' が工房を作成');
-  roomRef(rid).set(st).then(function(){
-    S.roomId=rid;localStorage.setItem(SK.roomId,rid);
-    E.rInput.value=rid;
-    subscribe(rid);
-    tst('工房作成！ ID:'+rid);
-    updUrl(rid);
-  }).catch(function(e){tst('エラー:'+e.message);});
-}
-
-function joinRoom(rid,show){
-  if(!rid)return tst('番号入力');
-  svN();
-  var name=S.name||'調香師';
-  txn(rid,function(st){
-    if(!st||!st.status)throw new Error('部屋なし');
-    if(st.status!=='waiting')throw new Error('開始済み');
-    st.players=st.players||[];
-    /* already joined? */
-    for(var i=0;i<st.players.length;i++){if(st.players[i].token===S.token){return;}}
-    if(st.players.length>=Number(st.maxPlayers||4))throw new Error('満席');
-    var seat='P'+(st.players.length+1);
-    st.players.push({seat:seat,token:S.token,name:name,hand:[],barrierUntil:0,declared:''});
-    gLog(st,name+' が参加');
-  }).then(function(r){
-    if(r.committed){
-      S.roomId=rid;localStorage.setItem(SK.roomId,rid);
-      E.rInput.value=rid;
-      subscribe(rid);
-      if(show)tst('参加！');
-      updUrl(rid);
+function extractCycles(rows, thr, settleSec) {
+  rows.forEach(r => r.state = classifyState(r.ch2, thr));
+  const events = [];
+  for (let i = 0; i < rows.length; i++) {
+    const prev = i > 0 ? rows[i-1].state : null;
+    if (rows[i].state !== prev) {
+      events.push({ idx: i, from: prev, to: rows[i].state, time: rows[i].datetime });
     }
-  }).catch(function(e){tst(e.message);});
-}
-
-function startGame(){
-  txn(S.roomId,function(st){
-    var seat=seatByTk(st,S.token);
-    if(st.status!=='waiting')throw new Error('既に開始済み');
-    if(seat!=='P1')throw new Error('作成者のみ');
-    if((st.players||[]).length<2)throw new Error('2人以上必要');
-    st.status='playing';st.turnSeat='P1';st.turnSerial=1;
-    st.deck=shuffle(createDeck());st.discard=[];st.excluded=[];
-    st.forceDraw=0;st.forceDrawSrc='';st.bannedColor='';st.bannedExpire=0;
-    st.phase='choose';st.drewThisTurn=false;st.lastDrawn='';
-    st.field=[{slot:'TOP',card:null,stack:[]},{slot:'MIDDLE',card:null,stack:[]},{slot:'BASE',card:null,stack:[]}];
-    st.winnerSeat='';st.resultSummary='';st.finishedAt='';st.logs=[];
-    st.players.forEach(function(p){p.hand=[];p.barrierUntil=0;p.declared='';});
-    for(var i=0;i<HAND_SIZE;i++) st.players.forEach(function(p){drawToHand(st,p.seat,1);});
-    /* fill field (skip poisons) */
-    var fi=0;
-    while(fi<FIELD_N){var c=drawCard(st);if(!c)break;if(c.c==='P'){st.discard.push(c);}else{st.field[fi].card=c;fi++;}}
-    gLog(st,'対局開始。'+seatName(st,'P1')+' の手番');
-  }).catch(function(e){tst(e.message);});
-}
-
-function resetRoom(){
-  if(!confirm('初期化？'))return;
-  txn(S.roomId,function(st){
-    var seat=seatByTk(st,S.token);
-    if(seat!=='P1')throw new Error('作成者のみ');
-    var players=st.players.map(function(p,i){return {seat:'P'+(i+1),token:p.token,name:p.name,hand:[],barrierUntil:0,declared:''};});
-    st.status='waiting';st.players=players;
-    st.deck=[];st.discard=[];st.excluded=[];
-    st.field=[{slot:'TOP',card:null,stack:[]},{slot:'MIDDLE',card:null,stack:[]},{slot:'BASE',card:null,stack:[]}];
-    st.turnSeat='P1';st.turnSerial=1;st.forceDraw=0;st.forceDrawSrc='';
-    st.bannedColor='';st.bannedExpire=0;st.phase='choose';
-    st.drewThisTurn=false;st.lastDrawn='';
-    st.winnerSeat='';st.resultSummary='';st.finishedAt='';st.logs=[];
-    gLog(st,'ルーム初期化');
-  }).catch(function(e){tst(e.message);});
-}
-
-function doRestock(){
-  txn(S.roomId,function(st){
-    normalizeT(st);var seat=seatByTk(st,S.token);assertTurn(st,seat);
-    if(st.phase!=='choose')throw new Error('補充不可');
-    if(st.drewThisTurn)throw new Error('既に補充済み');
-    var p=player(st,seat);var c=drawCard(st);if(!c)throw new Error('山札なし');
-    st.lastDrawn=c.id;st.drewThisTurn=true;
-    if(c.c==='P'){
-      if(hasBarrier(p,st.turnSerial)){st.discard.push(c);gLog(st,seatName(st,seat)+' 毒薬→障壁で無効化');}
-      else{p.hand=p.hand||[];p.hand.push(c);sortHand(p.hand);gLog(st,seatName(st,seat)+' 毒薬→ターン終了');}
-      finishTurn(st,seat);return;
-    }
-    p.hand=p.hand||[];p.hand.push(c);sortHand(p.hand);
-    gLog(st,seatName(st,seat)+' 補充→'+fmtCard(c));
-    st.phase='restock_chain';
-  }).catch(function(e){tst(e.message);});
-}
-
-function doEndTurn(){
-  txn(S.roomId,function(st){
-    normalizeT(st);var seat=seatByTk(st,S.token);assertTurn(st,seat);
-    gLog(st,seatName(st,seat)+' ターン終了');
-    finishTurn(st,seat);
-  }).catch(function(e){tst(e.message);});
-}
-
-function doPDraw(){
-  txn(S.roomId,function(st){
-    normalizeT(st);var seat=seatByTk(st,S.token);assertTurn(st,seat);
-    if(st.phase!=='pending_draw'||st.forceDraw<=0)throw new Error('強制ドローフェイズではない');
-    var cnt=st.forceDraw;
-    drawToHand(st,seat,cnt);
-    gLog(st,seatName(st,seat)+' '+st.forceDrawSrc+'で'+cnt+'枚補充');
-    st.forceDraw=0;st.forceDrawSrc='';
-    finishTurn(st,seat);
-  }).catch(function(e){tst(e.message);});
-}
-
-function doBlend(){
-  if(!S.selCards.length)return tst('カード選択');
-  if(!S.exclId)return tst('除外指定(長押し/右クリック)');
-  var N=S.selCards.length;
-  if(S.selSlots.length!==N-1)return tst('スロット'+(N-1)+'箇所選択');
-  var cardIds=S.selCards.slice(),excludeId=S.exclId,slots=S.selSlots.slice();
-  txn(S.roomId,function(st){
-    normalizeT(st);var seat=seatByTk(st,S.token);assertTurn(st,seat);
-    if(st.phase!=='choose'&&st.phase!=='restock_chain')throw new Error('調合不可');
-    var p=player(st,seat);
-    var cards=cardIds.map(function(id){
-      var c=findCard(p.hand,id);if(!c)throw new Error('手札にないカード');
-      if(c.c==='P')throw new Error('毒薬は調合不可');
-      if(st.bannedColor&&c.c===st.bannedColor)throw new Error('禁色カードは調合不可');
-      return JSON.parse(JSON.stringify(c));
-    });
-    var exCard=findCard(cards,excludeId);
-    var remain=cards.filter(function(c){return c.id!==excludeId;});
-    /* preview field */
-    var fCopy=JSON.parse(JSON.stringify(st.field));
-    remain.forEach(function(c,i){fCopy[slots[i]].card=JSON.parse(JSON.stringify(c));});
-    var combo=detectCombo(fCopy);
-    if(!combo.type)throw new Error('役が成立する調合のみ実行可能');
-    /* execute */
-    cards.forEach(function(c){removeCard(p.hand,c.id);});
-    st.excluded=st.excluded||[];st.excluded.push(exCard);
-    remain.forEach(function(c,i){
-      var si=slots[i];var slot=st.field[si];
-      var picked=pickupSlot(st,seat,si);
-      picked.forEach(function(pc){if(pc.c==='P')receivePoison(st,seat,pc);else{p.hand=p.hand||[];p.hand.push(pc);}});
-      slot.card=JSON.parse(JSON.stringify(c));slot.stack=[];
-    });
-    sortHand(p.hand);
-    gLog(st,seatName(st,seat)+' 調合→役「'+combo.label+'」');
-    /* combo effects */
-    if(combo.type==='MONOTONE'){
-      st.forceDraw=2;st.forceDrawSrc='モノトーン';
-      checkWin(st,seat);if(st.status==='ended')return;
-      finishTurn(st,seat);st.phase='pending_draw';
-    } else if(combo.type==='GRADATION'){
-      checkWin(st,seat);if(st.status==='ended')return;
-      if((p.hand||[]).some(function(c){return c.c!=='P';})){st.phase='grad_extra';}
-      else{gLog(st,'グラデ：素材なし→追加除外なし');finishTurn(st,seat);}
-    } else if(combo.type==='HARMONY'){
-      checkWin(st,seat);if(st.status==='ended')return;
-      if((p.hand||[]).some(function(c){return c.c==='P';})){st.phase='harmony_act';}
-      else{gLog(st,'ハーモニー：毒薬なし→効果なし');finishTurn(st,seat);}
-    } else if(combo.type==='ESSENCE'){
-      checkWin(st,seat);if(st.status==='ended')return;
-      st.phase='essence_setup';
-    } else {
-      checkWin(st,seat);if(st.status==='ended')return;
-      finishTurn(st,seat);
-    }
-  }).then(function(){clr();}).catch(function(e){tst(e.message);});
-}
-
-function doGradEx(cid){
-  txn(S.roomId,function(st){
-    normalizeT(st);var seat=seatByTk(st,S.token);assertTurn(st,seat);
-    if(st.phase!=='grad_extra')throw new Error('グラデフェイズではない');
-    var p=player(st,seat);var c=findCard(p.hand,cid);if(!c)throw new Error('カードなし');
-    if(c.c==='P')throw new Error('毒薬は追加除外不可');
-    removeCard(p.hand,c.id);st.excluded=st.excluded||[];st.excluded.push(c);
-    gLog(st,'グラデ追加除外→'+fmtCard(c));
-    checkWin(st,seat);if(st.status==='ended')return;
-    finishTurn(st,seat);
-  }).then(function(){clr();}).catch(function(e){tst(e.message);});
-}
-
-function doHarmony(action,targetSeat,slotIdx){
-  txn(S.roomId,function(st){
-    normalizeT(st);var seat=seatByTk(st,S.token);assertTurn(st,seat);
-    if(st.phase!=='harmony_act')throw new Error('ハーモニーフェイズではない');
-    var p=player(st,seat);
-    var poison=null;for(var i=0;i<(p.hand||[]).length;i++){if(p.hand[i].c==='P'){poison=p.hand[i];break;}}
-    if(!poison){gLog(st,'ハーモニー：毒薬なし');finishTurn(st,seat);return;}
-    removeCard(p.hand,poison.id);
-    if(action==='spot'){
-      slotIdx=Number(slotIdx);if(slotIdx<0||slotIdx>=FIELD_N)slotIdx=0;
-      var slot=st.field[slotIdx];
-      if(slot.card){st.discard=st.discard||[];st.discard.push(slot.card);}
-      (slot.stack||[]).forEach(function(c){st.discard.push(c);});
-      slot.card=poison;slot.stack=[];
-      gLog(st,'ハーモニー：毒薬を'+SN[slotIdx]+'に設置');
-    } else {
-      var ts=targetSeat&&player(st,targetSeat)&&targetSeat!==seat?targetSeat:nextSeat(st,seat);
-      receivePoison(st,ts,poison);
-      gLog(st,'ハーモニー：毒薬を'+seatName(st,ts)+'に渡した');
-    }
-    checkWin(st,seat);if(st.status==='ended')return;
-    finishTurn(st,seat);
-  }).then(function(){clr();}).catch(function(e){tst(e.message);});
-}
-
-function doEssence(seedCid,ban,poisonTarget){
-  txn(S.roomId,function(st){
-    normalizeT(st);var seat=seatByTk(st,S.token);assertTurn(st,seat);
-    if(st.phase!=='essence_setup')throw new Error('エッセンスフェイズではない');
-    if(!ban||COLORS.indexOf(ban)<0)throw new Error('禁色を指定');
-    var p=player(st,seat);
-    /* push field poison to target */
-    if(poisonTarget&&poisonTarget!==-1&&String(poisonTarget)!=='-1'){
-      (st.field||[]).forEach(function(slot){
-        if(slot&&slot.card&&slot.card.c==='P'){
-          var ts=poisonTarget&&player(st,String(poisonTarget))&&String(poisonTarget)!==seat?String(poisonTarget):null;
-          if(ts){receivePoison(st,ts,slot.card);(slot.stack||[]).forEach(function(c){st.discard=st.discard||[];st.discard.push(c);});slot.card=null;slot.stack=[];gLog(st,'エッセンス：毒スポットを'+seatName(st,ts)+'に押しつけ');}
-        }
-      });
-    }
-    /* clear field */
-    (st.field||[]).forEach(function(slot){
-      if(slot.card){st.discard=st.discard||[];st.discard.push(slot.card);}
-      (slot.stack||[]).forEach(function(c){st.discard.push(c);});
-      slot.card=null;slot.stack=[];
-    });
-    /* seed card */
-    if(seedCid){
-      var seed=findCard(p.hand,seedCid);
-      if(seed&&seed.c!=='P'&&seed.c!==ban){removeCard(p.hand,seed.id);st.field[0].card=seed;}
-    }
-    for(var i=0;i<FIELD_N;i++){
-      if(!st.field[i].card){var c=drawCard(st);st.field[i].card=c||{id:'F_'+uid().slice(0,6),c:'R',v:1};}
-      st.field[i].stack=[];
-    }
-    drawToHand(st,seat,2);
-    st.bannedColor=ban;st.bannedExpire=st.turnSerial+(st.players||[]).length;
-    gLog(st,'エッセンス：禁色→'+CN[ban]);
-    checkWin(st,seat);if(st.status==='ended')return;
-    finishTurn(st,seat);
-  }).then(function(){clr();}).catch(function(e){tst(e.message);});
-}
-
-function doVolatilize(cid){
-  txn(S.roomId,function(st){
-    normalizeT(st);var seat=seatByTk(st,S.token);assertTurn(st,seat);
-    if(st.phase!=='choose'&&st.phase!=='restock_chain')throw new Error('揮発不可');
-    var p=player(st,seat);var c=findCard(p.hand,cid);if(!c)throw new Error('カードなし');
-    if(c.c==='P')throw new Error('毒薬は揮発不可');
-    if(c.c!==st.bannedColor)throw new Error('禁色のみ');
-    removeCard(p.hand,c.id);st.discard=st.discard||[];st.discard.push(c);
-    drawToHand(st,seat,2);
-    gLog(st,seatName(st,seat)+' 揮発→'+fmtCard(c));
-    checkWin(st,seat);if(st.status==='ended')return;
-    finishTurn(st,seat);
-  }).then(function(){clr();}).catch(function(e){tst(e.message);});
-}
-
-function doDetox(){
-  txn(S.roomId,function(st){
-    normalizeT(st);var seat=seatByTk(st,S.token);assertTurn(st,seat);
-    var p=player(st,seat);
-    var poisons=[];(p.hand||[]).forEach(function(c){if(c.c==='P'&&poisons.length<2)poisons.push(c);});
-    if(poisons.length<2)throw new Error('毒薬2枚必要');
-    poisons.forEach(function(c){removeCard(p.hand,c.id);st.discard=st.discard||[];st.discard.push(c);});
-    var drawn=drawCard(st);
-    if(drawn){if(drawn.c==='P'){st.discard.push(drawn);}else{p.hand.push(drawn);}}
-    p.barrierUntil=st.turnSerial+(st.players||[]).length;
-    sortHand(p.hand);
-    gLog(st,seatName(st,seat)+' デトックス→1枚補充+障壁');
-    finishTurn(st,seat);
-  }).then(function(){clr();}).catch(function(e){tst(e.message);});
-}
-
-function doDeclare(kind){
-  txn(S.roomId,function(st){
-    var seat=seatByTk(st,S.token);assertTurn(st,seat);
-    var p=player(st,seat);
-    if(!p.hand||p.hand.length>2)throw new Error('手札2枚以下のとき宣言可能');
-    p.declared=kind==='bloom'?'ブルーミング':'リーチ';
-    gLog(st,seatName(st,seat)+' 「'+p.declared+'」宣言');
-  }).catch(function(e){tst(e.message);});
-}
-
-/* ═══════════════════════════════════════
-   Rendering (identical to GAS version)
-   ═══════════════════════════════════════ */
-function clr(){S.selCards=[];S.exclId='';S.selSlots=[];S.selFlock='';S.selBan='';S.selPoisonTarget=-1;}
-
-function renderAll(){
-  var st=S.st;if(!st)return;
-  rMeta(st);rPlayers(st);rField(st);rPhase(st);rHand(st);rLogs(st);rBtns(st);
-}
-
-function mySeat(){return S.st?seatByTk(S.st,S.token):'';}
-function myPlayer(){return S.st?player(S.st,mySeat()):null;}
-function canOp(){var st=S.st;return st&&st.status==='playing'&&mySeat()===st.turnSeat;}
-
-function rMeta(st){
-  E.plRoom.textContent='工房:'+(S.roomId||'-');E.rInput.value=S.roomId;
-  var me=myPlayer();
-  E.plSeat.textContent='席:'+(me?me.name+' ('+mySeat()+')':'観戦');
-  E.plTurn.textContent='手番:'+(st.turnSeat?seatName(st,st.turnSeat):'-');
-  E.plPhase.textContent=st.status==='playing'?PHL[st.phase]||st.phase:'-';
-  E.plDeck.textContent='山:'+((st.deck||[]).length);
-  E.plDisc.textContent='捨:'+((st.discard||[]).length);
-  E.plExcl.textContent='除:'+((st.excluded||[]).length);
-  if(st.bannedColor){E.plBan.style.display='';E.plBan.textContent='🚫'+CN[st.bannedColor];}else E.plBan.style.display='none';
-  E.msg.textContent=buildMsg(st);
-}
-
-function buildMsg(st){
-  var seat=mySeat();
-  if(st.status==='waiting')return '🧪 参加者が揃ったら「調合開始」';
-  if(st.status==='ended')return '🏆 '+st.resultSummary;
-  if(!seat)return seatName(st,st.turnSeat)+' の手番';
-  if(seat!==st.turnSeat)return '⏳ '+seatName(st,st.turnSeat)+' の手番を待っています';
-  if(st.phase==='pending_draw')return '⚠️ モノトーン効果：'+st.forceDraw+'枚引いてターン終了';
-  if(st.phase==='grad_extra')return '🎨 グラデーション：素材1枚追加除外';
-  if(st.phase==='harmony_act')return '🎵 ハーモニー：毒薬を渡す or 場設置';
-  if(st.phase==='essence_setup')return '✨ エッセンス：手札1枚→場＋禁色指定';
-  if(st.phase==='restock_chain')return '📦 補充後→調合 or ターン終了';
-  if(st.bannedColor)return '🚫 禁色：'+CN[st.bannedColor];
-  return '⚗️ 調合 or 補充を選択';
-}
-
-function rPlayers(st){
-  E.pRow.innerHTML='';var ps=st.players||[];var seat=mySeat();
-  if(!ps.length){E.pRow.innerHTML='<div class="pc"><div class="nm">待機中</div></div>';return;}
-  ps.forEach(function(p){
-    var d=mk('div','pc'+(p.seat===st.turnSeat?' act':''));
-    var pCnt=0;(p.hand||[]).forEach(function(c){if(c.c==='P')pCnt++;});
-    d.innerHTML='<div class="nm">'+(p.seat===seat?'⭐':'')+esc(p.name)+'</div><div class="inf">手札'+(p.hand||[]).length+(pCnt?' ☠×'+pCnt:'')+(p.declared?' 🌸':'')+' '+(p.seat===st.turnSeat?'🟢':'⏳')+(hasBarrier(p,st.turnSerial)?' 🛡️':'')+'</div>';
-    E.pRow.appendChild(d);
-  });
-}
-
-function rField(st){
-  E.slots.innerHTML='';var f=st.field||[null,null,null];var canSel=canOp()&&(st.phase==='choose'||st.phase==='restock_chain');
-  f.forEach(function(slot,i){
-    var d=mk('div','slot'+(S.selSlots.indexOf(i)>=0?' sel':''));
-    d.innerHTML='<div class="sLbl">'+SN[i]+'</div>';
-    var c=slot?slot.card:null;
-    if(c){var sc=c.c==='P'?'#6b21a8':({R:'#c0392b',B:'#2874a6',Y:'#b7950b',G:'#1e8449'}[c.c]||'#666');
-      d.innerHTML+='<div class="sEmoji">'+(CE[c.c]||'✦')+'</div><div class="sNum" style="color:'+sc+'">'+(c.c==='P'?'☠':c.v)+'</div><div class="sName">'+esc(CN[c.c]||'')+'</div>';
-      if(slot.stack&&slot.stack.length>0)d.innerHTML+='<div class="sStack">🍷×'+slot.stack.length+'</div>';
-    } else d.innerHTML+='<div class="sEmoji" style="opacity:.3">—</div>';
-    if(canSel)d.onclick=function(){tglSlot(i);};
-    E.slots.appendChild(d);
-  });
-  try{var combo=detectCombo(st.field);E.comboLbl.textContent=combo.label?'✦'+combo.label:'';}catch(e){E.comboLbl.textContent='';}
-}
-
-function tglSlot(i){var x=S.selSlots.indexOf(i);if(x>=0)S.selSlots.splice(x,1);else S.selSlots.push(i);renderAll();}
-
-function rPhase(st){
-  if(!canOp()||st.status!=='playing'){E.phBox.classList.remove('show');return;}
-  E.phBox.classList.add('show');var ph=st.phase;E.phT.textContent=PHL[ph]||ph;E.phC.innerHTML='';
-  var me=myPlayer();var hand=me?me.hand||[]:[];
-  var hasBanned=st.bannedColor&&hand.some(function(c){return c.c!=='P'&&c.c===st.bannedColor;});
-
-  if(ph==='choose'||ph==='restock_chain'){
-    E.phD.textContent=ph==='choose'?'⚗️ 調合/補充'+(hasBanned?'/揮発(💨'+CN[st.bannedColor]+')':''):'補充済→調合/終了'+(hasBanned?'/揮発':'');
-    var N=S.selCards.length;var nd=N>0?N-1:0;
-    var info=mk('div','');info.style.cssText='font-size:10px;color:var(--gold);margin-bottom:6px';info.textContent='選択'+N+' 除外:'+(S.exclId?'✓':'❌')+' スロット:'+S.selSlots.length+'/'+nd;E.phC.appendChild(info);
-    var bb=mk('button','bg');bb.textContent='⚗️調合';bb.disabled=!N||!S.exclId||S.selSlots.length!==nd;bb.onclick=doBlend;E.phC.appendChild(bb);
-    if(ph==='choose'){var rb=mk('button','bd');rb.textContent='📦補充';rb.style.marginLeft='6px';rb.onclick=doRestock;E.phC.appendChild(rb);}
-    if(ph==='restock_chain'){var eb=mk('button','bd');eb.textContent='⏭終了';eb.style.marginLeft='6px';eb.onclick=doEndTurn;E.phC.appendChild(eb);}
-    if(hand.length<=2&&!(me&&me.declared)){
-      var dw=mk('div','');dw.style.cssText='margin-top:6px;display:flex;gap:4px';
-      var dr=mk('button','bd');dr.textContent='🌸リーチ';dr.onclick=function(){doDeclare('reach');};dw.appendChild(dr);
-      var dbm=mk('button','bd');dbm.textContent='💐ブルーミング';dbm.onclick=function(){doDeclare('bloom');};dw.appendChild(dbm);
-      E.phC.appendChild(dw);
-    }
-    if(hasBanned){
-      var vw=mk('div','');vw.style.cssText='margin-top:6px;display:flex;flex-wrap:wrap;gap:4px';
-      var vl=mk('span','');vl.style.cssText='font-size:10px;color:var(--gold);align-self:center';vl.textContent='💨揮発('+CN[st.bannedColor]+'):';vw.appendChild(vl);
-      hand.forEach(function(c){if(c.c!=='P'&&c.c===st.bannedColor){var vb=mk('button','br');vb.textContent=(CE[c.c]||'')+CN[c.c]+c.v;vb.style.fontSize='10px';vb.onclick=function(){doVolatilize(c.id);};vw.appendChild(vb);}});
-      E.phC.appendChild(vw);
-    }
-    var pCnt=0;hand.forEach(function(c){if(c.c==='P')pCnt++;});
-    if(pCnt>=2){var dtb=mk('button','br');dtb.textContent='💀デトックス';dtb.style.marginLeft='6px';dtb.onclick=doDetox;E.phC.appendChild(dtb);}
-  } else if(ph==='pending_draw'){
-    E.phD.textContent='⚠️'+(st.forceDraw||0)+'枚強制ドロー';
-    var pb=mk('button','br');pb.textContent=(st.forceDraw||0)+'枚引く';pb.onclick=doPDraw;E.phC.appendChild(pb);
-  } else if(ph==='grad_extra'){
-    E.phD.textContent='🎨 グラデーション追加除外（素材のみ/毒薬不可）';
-    hand.forEach(function(c){if(c.c==='P')return;var b=mk('button','bd');b.textContent=(CE[c.c]||'')+CN[c.c]+c.v;b.style.marginRight='4px';b.onclick=function(){doGradEx(c.id);};E.phC.appendChild(b);});
-  } else if(ph==='harmony_act'){
-    E.phD.textContent='🎵 ハーモニー：毒薬を渡す or 場設置';
-    (st.players||[]).forEach(function(p){if(p.seat===mySeat())return;var b=mk('button','bd');b.textContent=p.name+'に渡す';b.onclick=function(){doHarmony('pass',p.seat,0);};E.phC.appendChild(b);});
-    [0,1,2].forEach(function(si){var b=mk('button','br');b.textContent=SN[si]+'設置';b.style.marginLeft='4px';b.onclick=function(){doHarmony('spot',-1,si);};E.phC.appendChild(b);});
-  } else if(ph==='essence_setup'){
-    E.phD.textContent='✨ エッセンス：手札1枚→場+禁止色+場毒薬譲渡先';
-    var w1=mk('div','');w1.style.cssText='display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px';
-    hand.forEach(function(c){if(c.c==='P')return;var b=mk('button','bd '+(S.selFlock===c.id?'sel':''));b.textContent=(CE[c.c]||'')+CN[c.c]+c.v;b.onclick=function(){S.selFlock=c.id;renderAll();};w1.appendChild(b);});E.phC.appendChild(w1);
-    var w2=mk('div','');w2.style.cssText='display:flex;gap:4px;margin-bottom:6px';
-    ['R','B','Y','G'].forEach(function(col){var b=mk('button','bd '+(S.selBan===col?'sel':''));b.textContent=CE[col]+CN[col];b.onclick=function(){S.selBan=col;renderAll();};w2.appendChild(b);});E.phC.appendChild(w2);
-    var hasFieldPoison=(st.field||[]).some(function(s){return s&&s.card&&s.card.c==='P';});
-    if(hasFieldPoison){
-      var w3=mk('div','');w3.style.cssText='display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px';
-      var nl=mk('span','');nl.style.cssText='font-size:10px;color:var(--gold);align-self:center';nl.textContent='毒薬押し付け先:';w3.appendChild(nl);
-      var nb=mk('button','bd '+(S.selPoisonTarget===-1?'sel':''));nb.textContent='なし';nb.onclick=function(){S.selPoisonTarget=-1;renderAll();};w3.appendChild(nb);
-      (st.players||[]).forEach(function(p){if(p.seat===mySeat())return;var b=mk('button','bd '+(S.selPoisonTarget===p.seat?'sel':''));b.textContent=p.name;b.onclick=function(){S.selPoisonTarget=p.seat;renderAll();};w3.appendChild(b);});
-      E.phC.appendChild(w3);
-    }
-    var go=mk('button','bg');go.textContent='✨決定';go.disabled=!S.selFlock||!S.selBan;go.onclick=function(){doEssence(S.selFlock,S.selBan,S.selPoisonTarget);};E.phC.appendChild(go);
   }
+
+  const cycles = [];
+  for (let k = 0; k < events.length; k++) {
+    const ev = events[k];
+    if (ev.from !== 'I' || ev.to !== 'C') continue;
+    const chargeStartIdx = ev.idx;
+
+    // 青 = 直前の D→I 遷移の1つ前 (放電期間の最後 = Ch1最低)
+    let blueIdx = null;
+    for (let j = k - 1; j >= 0; j--) {
+      if (events[j].from === 'D' && events[j].to === 'I') {
+        blueIdx = Math.max(events[j].idx - 1, 0); break;
+      }
+    }
+    if (blueIdx === null) {
+      blueIdx = Math.max(chargeStartIdx - 1, 0);  // 初回サイクル用フォールバック
+    }
+
+    // 赤 = 次の C→I の1つ前
+    let redIdx = null, redEv = null;
+    for (let j = k + 1; j < events.length; j++) {
+      if (events[j].from === 'C' && events[j].to === 'I') {
+        redIdx = Math.max(events[j].idx - 1, 0); redEv = events[j]; break;
+      }
+    }
+    if (redIdx === null) continue;
+
+    // 黄 = 次の I→D の1つ前
+    let yellowIdx = null, yellowEv = null;
+    for (let j = k + 1; j < events.length; j++) {
+      if (events[j].from === 'I' && events[j].to === 'D'
+          && events[j].idx > redEv.idx) {
+        yellowIdx = Math.max(events[j].idx - 1, 0); yellowEv = events[j]; break;
+      }
+    }
+    if (yellowIdx === null) continue;
+
+    // 緑 = I→D + settleSec 秒後
+    const tSettle = new Date(yellowEv.time.getTime() + settleSec * 1000);
+    let greenIdx = null;
+    for (let j = yellowEv.idx; j < rows.length; j++) {
+      if (rows[j].datetime >= tSettle && rows[j].state === 'D') {
+        greenIdx = j; break;
+      }
+    }
+    if (greenIdx === null) continue;
+
+    cycles.push({
+      cycle:       cycles.length + 1,
+      blue_time:   rows[blueIdx].datetime,
+      blue_ch1:    rows[blueIdx].ch1,
+      red_time:    rows[redIdx].datetime,
+      red_ch1:     rows[redIdx].ch1,
+      yellow_time: rows[yellowIdx].datetime,
+      yellow_ch1:  rows[yellowIdx].ch1,
+      green_time:  rows[greenIdx].datetime,
+      green_ch1:   rows[greenIdx].ch1,
+      green_ch2:   rows[greenIdx].ch2,
+    });
+  }
+  return cycles;
 }
 
-function rHand(st){
-  E.handScr.innerHTML='';var me=myPlayer();var hand=me?me.hand||[]:[];
-  E.hCnt.textContent=hand.length;E.hHelp.textContent=hand.length?'タップ:選択 / 長押し:除外指定':'手札なし';
-  if(!hand.length){E.handScr.innerHTML='<div style="color:rgba(232,220,200,.3);font-size:11px;padding:6px">手札なし</div>';return;}
-  hand.forEach(function(c){
-    var cls='hc '+(CC[c.c]||'');if(S.selCards.indexOf(c.id)>=0)cls+=' sel';if(S.exclId===c.id)cls+=' excl';
-    if(st.bannedColor&&c.c!=='P'&&c.c===st.bannedColor)cls+=' banned';
-    var b=mk('button',cls);
-    b.innerHTML='<span class="hE">'+esc(CE[c.c]||'')+' '+esc(CN[c.c]||'')+'</span><span class="hN">'+(c.c==='P'?'☠':c.v)+'</span><span class="hL">'+esc(c.c==='P'?'☠毒薬':(CE[c.c]||'')+CN[c.c]+c.v)+'</span>';
-    b.onclick=function(){tglCard(c.id);};b.oncontextmenu=function(e){e.preventDefault();setExcl(c.id);};
-    var lt;b.addEventListener('touchstart',function(e){lt=setTimeout(function(){e.preventDefault();setExcl(c.id);},400);},{passive:false});
-    b.addEventListener('touchend',function(){clearTimeout(lt);});b.addEventListener('touchmove',function(){clearTimeout(lt);});
-    E.handScr.appendChild(b);
+// =======================================================================
+// UI
+// =======================================================================
+const $ = id => document.getElementById(id);
+let currentFile = null, currentRows = null, currentCycles = null;
+let chart1 = null, chart2 = null;
+
+function log(msg) {
+  $('logCard').classList.remove('hide');
+  $('log').textContent += msg + '\n';
+  $('log').scrollTop = $('log').scrollHeight;
+}
+
+$('file').addEventListener('change', e => {
+  if (e.target.files.length) setFile(e.target.files[0]);
+});
+$('dropZone').addEventListener('dragover', e => {
+  e.preventDefault(); $('dropZone').classList.add('dragover');
+});
+$('dropZone').addEventListener('dragleave', () => $('dropZone').classList.remove('dragover'));
+$('dropZone').addEventListener('drop', e => {
+  e.preventDefault(); $('dropZone').classList.remove('dragover');
+  if (e.dataTransfer.files.length) setFile(e.dataTransfer.files[0]);
+});
+
+function setFile(f) {
+  currentFile = f;
+  $('fileName').textContent = `選択中: ${f.name} (${(f.size/1024/1024).toFixed(2)} MB)`;
+  $('runBtn').disabled = false;
+}
+
+$('runBtn').addEventListener('click', async () => {
+  if (!currentFile) return;
+  $('log').textContent = '';
+  log(`読込中: ${currentFile.name}`);
+  const t0 = performance.now();
+  const text = await currentFile.text();
+  const skip = parseInt($('skip').value, 10);
+  const rows = parseCsv(text, skip);
+  log(`${rows.length.toLocaleString()} 行を解析`);
+  if (rows.length === 0) { log('有効なデータが見つかりません'); return; }
+
+  const thr = parseFloat($('thr').value);
+  const settle = parseInt($('settle').value, 10);
+  const cycles = extractCycles(rows, thr, settle);
+  log(`検出サイクル数: ${cycles.length}`);
+  log(`処理時間: ${((performance.now()-t0)/1000).toFixed(2)} 秒`);
+
+  currentRows = rows; currentCycles = cycles;
+  renderResult();
+});
+
+function renderResult() {
+  const n = currentCycles.length;
+  const avg = k => n ? currentCycles.reduce((s,c)=>s+c[k],0)/n : 0;
+
+  $('summary').innerHTML = `
+    <div class="stat"><div class="v">${n}</div><div class="l">検出サイクル数</div></div>
+    <div class="stat"><div class="v">${avg('blue_ch1').toFixed(3)}V</div><div class="l">平均 青 放電終了</div></div>
+    <div class="stat"><div class="v">${avg('red_ch1').toFixed(3)}V</div><div class="l">平均 赤 充電終了</div></div>
+    <div class="stat"><div class="v">${avg('yellow_ch1').toFixed(3)}V</div><div class="l">平均 黄 放電直前</div></div>
+    <div class="stat"><div class="v">${avg('green_ch1').toFixed(3)}V</div><div class="l">平均 緑 下げ止まり</div></div>`;
+
+  let html = '<thead><tr>' +
+    '<th>A:#</th>' +
+    '<th>B:青Ch1</th><th>C:赤Ch1</th><th>D:黄Ch1</th><th>E:緑Ch1</th><th>F:緑Ch2</th>' +
+    '<th>G:青時刻(放電終了)</th><th>H:赤時刻(充電終了)</th><th>I:黄時刻</th><th>J:緑時刻</th>' +
+    '</tr></thead><tbody>';
+  currentCycles.forEach(c => {
+    html += `<tr>
+      <td>${c.cycle}</td>
+      <td>${c.blue_ch1.toFixed(5)}</td>
+      <td>${c.red_ch1.toFixed(5)}</td>
+      <td>${c.yellow_ch1.toFixed(5)}</td>
+      <td>${c.green_ch1.toFixed(5)}</td>
+      <td>${c.green_ch2.toFixed(5)}</td>
+      <td>${fmtDate(c.blue_time)}</td>
+      <td>${fmtDate(c.red_time)}</td>
+      <td>${fmtDate(c.yellow_time)}</td>
+      <td>${fmtDate(c.green_time)}</td></tr>`;
+  });
+  html += '</tbody>';
+  $('resultTable').innerHTML = html;
+
+  $('resultCard').classList.remove('hide');
+  $('chartCard').classList.remove('hide');
+  renderChart();
+}
+
+function fmtDate(d){
+  const p = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} `
+       + `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+function renderChart() {
+  const step = Math.max(1, Math.floor(currentRows.length / 3000));
+  const sparse = currentRows.filter((_,i)=> i % step === 0);
+  const ch1Data = sparse.map(r => ({x: r.datetime, y: r.ch1}));
+  const ch2Data = sparse.map(r => ({x: r.datetime, y: r.ch2}));
+
+  const makeMark = (getx, gety, color) => ({
+    type: 'scatter',
+    data: currentCycles.map(c => ({x: c[getx], y: c[gety]})),
+    backgroundColor: 'transparent', borderColor: color, borderWidth: 2,
+    pointRadius: 7, pointStyle: 'circle', showLine: false,
+  });
+
+  if (chart1) chart1.destroy();
+  chart1 = new Chart($('chart1'), {
+    type: 'line',
+    data: { datasets: [
+      { label: 'Ch1', data: ch1Data, borderColor: '#e53935',
+        borderWidth: 1, pointRadius: 0, tension: 0 },
+      { label: '青 放電終了', ...makeMark('blue_time','blue_ch1','#2962ff') },
+      { label: '赤 充電終了', ...makeMark('red_time','red_ch1','#d32f2f') },
+      { label: '黄 放電直前', ...makeMark('yellow_time','yellow_ch1','#f9a825') },
+      { label: '緑 下げ止まり',...makeMark('green_time','green_ch1','#2e7d32') },
+    ]},
+    options: {
+      responsive: true, animation: false, parsing: false,
+      scales: {
+        x: { type: 'time', time: { tooltipFormat: 'yyyy-MM-dd HH:mm' } },
+        y: { title: { display: true, text: 'Ch1 (V)' } } },
+      plugins: { legend: { position: 'bottom' } }
+    }
+  });
+
+  if (chart2) chart2.destroy();
+  chart2 = new Chart($('chart2'), {
+    type: 'line',
+    data: { datasets: [
+      { label: 'Ch2', data: ch2Data, borderColor: '#b8a000',
+        borderWidth: 1, pointRadius: 0, tension: 0 },
+      { label: '緑 Ch2', ...makeMark('green_time','green_ch2','#2e7d32') },
+    ]},
+    options: {
+      responsive: true, animation: false, parsing: false,
+      scales: { x: { type: 'time' },
+                y: { title: { display: true, text: 'Ch2 (V)' } } },
+      plugins: { legend: { position: 'bottom' } }
+    }
   });
 }
 
-function tglCard(id){
-  var me=myPlayer();if(!me)return;var hand=me.hand||[];
-  var c=findCard(hand,id);if(!c)return;
-  if(S.st&&S.st.bannedColor&&c.c===S.st.bannedColor&&c.c!=='P'){return tst('禁色は調合不可(揮発は可)');}
-  if(c.c==='P'){return tst('毒薬は調合不可');}
-  var x=S.selCards.indexOf(id);if(x>=0){S.selCards.splice(x,1);if(S.exclId===id)S.exclId='';}else{if(S.selCards.length>=3)return tst('最大3枚');S.selCards.push(id);if(S.selCards.length===1)S.exclId=id;}
-  while(S.selSlots.length>Math.max(0,S.selCards.length-1))S.selSlots.pop();
-  renderAll();
-}
-function setExcl(id){if(S.selCards.indexOf(id)<0){S.selCards.push(id);if(S.selCards.length>3)S.selCards.shift();}S.exclId=id;renderAll();}
-
-function rLogs(st){
-  E.logL.innerHTML='';var logs=st.logs||[];
-  if(!logs.length){E.logL.innerHTML='<div class="logI"><div class="lt">記録なし</div></div>';return;}
-  logs.slice().reverse().forEach(function(l){var d=mk('div','logI');d.innerHTML='<div class="lt">'+esc(l.text)+'</div><div class="ls">'+esc(fmtT(l.at))+'</div>';E.logL.appendChild(d);});
-}
-
-function rBtns(st){
-  var j=!!mySeat();
-  E.cpBtn.disabled=!S.roomId;
-  E.sBtn.disabled=!(j&&st.status==='waiting'&&(st.players||[]).length>=2);
-  E.rsBtn.disabled=!j;
-}
-
-function maybeRes(){
-  var st=S.st;if(!st||st.status!=='ended'||!st.finishedAt)return;
-  var k=st.finishedAt+st.resultSummary;if(S.shown===k)return;S.shown=k;
-  E.resT.textContent='🏆 ゲーム終了';E.resB.textContent=st.resultSummary||'終了';E.resOv.classList.add('show');
+// =======================================================================
+// ダウンロード
+// =======================================================================
+function buildSheetData() {
+  const header = [
+    'A_サイクル番号',
+    'B_青_放電終了_Ch1(V)',
+    'C_赤_充電終了_Ch1(V)',
+    'D_黄_放電開始直前_Ch1(V)',
+    'E_緑_放電下げ止まり_Ch1(V)',
+    'F_緑_放電下げ止まり_Ch2(V)',
+    'G_青_時刻(放電終了)',
+    'H_赤_時刻(充電終了)',
+    'I_黄_時刻',
+    'J_緑_時刻'
+  ];
+  const rows = currentCycles.map(c => [
+    c.cycle,
+    c.blue_ch1, c.red_ch1, c.yellow_ch1, c.green_ch1, c.green_ch2,
+    fmtDate(c.blue_time), fmtDate(c.red_time),
+    fmtDate(c.yellow_time), fmtDate(c.green_time)
+  ]);
+  return [header, ...rows];
 }
 
-/* ─── Utility ─── */
-function updUrl(rid){var u=new URL(location.href);u.searchParams.set('room',rid);history.replaceState({},'',u.toString());}
-function cpR(){navigator.clipboard.writeText(S.roomId).then(function(){tst('📋コピー');}).catch(function(){});}
-function setTab(t){E.tLog.classList.toggle('act',t==='log');E.tRule.classList.toggle('act',t==='rule');E.logP.style.display=t==='log'?'':'none';E.ruleP.style.display=t==='rule'?'':'none';}
-function tst(m){E.toast.textContent=m;E.toast.classList.add('show');clearTimeout(tst._t);tst._t=setTimeout(function(){E.toast.classList.remove('show');},2400);}
-function fmtT(iso){if(!iso)return'-';try{return new Date(iso).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',second:'2-digit'});}catch(e){return iso;}}
-function esc(s){var d=document.createElement('div');d.textContent=String(s||'');return d.innerHTML;}
-function mk(tag,cls){var e=document.createElement(tag);if(cls)e.className=cls;return e;}
+$('dlXlsx').addEventListener('click', () => {
+  const data = buildSheetData();
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  XLSX.utils.book_append_sheet(wb, ws, 'Cycles');
+  const base = currentFile.name.replace(/\.[^.]+$/,'');
+  XLSX.writeFile(wb, `${base}_cycles.xlsx`);
+});
 
-/* ─── Init ─── */
-(function(){
-  for(var i=2;i<=4;i++){var o=document.createElement('option');o.value=i;o.textContent=i+'人';E.maxP.appendChild(o);}
-  E.pName.value=S.name;
-  var rp=new URL(location.href).searchParams.get('room');
-  if(rp){S.roomId=rp.toUpperCase();localStorage.setItem(SK.roomId,S.roomId);}
-  E.rInput.value=S.roomId;
-  E.pName.addEventListener('change',svN);
-  E.cBtn.addEventListener('click',createRoom);
-  E.jBtn.addEventListener('click',function(){joinRoom((E.rInput.value||'').trim().toUpperCase(),true);});
-  E.cpBtn.addEventListener('click',cpR);
-  E.sBtn.addEventListener('click',startGame);
-  E.rsBtn.addEventListener('click',resetRoom);
-  E.tLog.addEventListener('click',function(){setTab('log');});
-  E.tRule.addEventListener('click',function(){setTab('rule');});
-  E.resX.addEventListener('click',function(){E.resOv.classList.remove('show');});
-  if(S.roomId) subscribe(S.roomId);
-})();
-</script></body></html>
+$('dlCsv').addEventListener('click', () => {
+  const data = buildSheetData();
+  const csv = data.map(r => r.join(',')).join('\r\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const base = currentFile.name.replace(/\.[^.]+$/,'');
+  a.download = `${base}_cycles.csv`;
+  a.click();
+});
+</script>
+</body>
+</html>
