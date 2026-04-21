@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>充放電サイクル特徴点抽出ツール (v3.1)</title>
+<title>充放電サイクル特徴点抽出ツール (v3.2)</title>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
@@ -76,6 +76,9 @@
   .btn.small { padding: 6px 12px; font-size: .85em; }
   .btn.success { background: linear-gradient(135deg,#43a047,#2e7d32); }
   .btn.warn { background: linear-gradient(135deg,#ff9800,#f57c00); }
+  .btn.danger { background: linear-gradient(135deg,#e53935,#c62828); }
+  .btn.active-edit { background: linear-gradient(135deg,#d32f2f,#b71c1c)!important;
+                     box-shadow: 0 0 0 3px rgba(211,47,47,.25); }
 
   .chart-controls {
     display: flex; flex-wrap: wrap; align-items: center;
@@ -89,7 +92,7 @@
     border-radius: 4px; font-size: .9em;
   }
 
-  /* === 重要: Canvas用の親要素は position:relative + 明示的な高さ === */
+  /* === Canvas親: position:relative + 明示的な高さ === */
   .chart-wrap {
     position: relative;
     width: 100%;
@@ -99,8 +102,28 @@
     border-radius: 6px;
     padding: 8px;
   }
-  .chart-wrap.ch1 { height: 440px; }
+  .chart-wrap.ch1 { height: 460px; }
   .chart-wrap.ch2 { height: 220px; margin-top: 8px; }
+
+  /* === 編集モード用オーバーレイ === */
+  .chart-wrap .overlay {
+    position: absolute;
+    top: 8px; left: 8px; right: 8px; bottom: 8px;
+    pointer-events: none;  /* 通常は無視 */
+    z-index: 10;
+    cursor: default;
+  }
+  body.edit-mode .chart-wrap .overlay {
+    pointer-events: auto;   /* 編集モード時のみイベント受信 */
+    cursor: crosshair;
+  }
+  body.edit-mode.dragging .chart-wrap .overlay {
+    cursor: grabbing;
+  }
+  body.edit-mode .chart-wrap {
+    box-shadow: 0 0 0 3px rgba(211,47,47,.3);
+    border-color: #d32f2f;
+  }
 
   .edit-hint {
     padding: 12px 16px; background: #e8f5e9;
@@ -108,6 +131,13 @@
     margin-bottom: 12px; font-size: .9em; color: #1b5e20;
   }
   .edit-hint b { color: #2e7d32; }
+  .edit-status {
+    display: inline-block; padding: 4px 10px;
+    border-radius: 12px; font-size: .85em; font-weight: 600;
+    margin-left: 10px;
+  }
+  .edit-status.on { background: #d32f2f; color: white; }
+  .edit-status.off { background: #90a4ae; color: white; }
 
   table.result-tbl { width: 100%; border-collapse: collapse; margin-top: 12px;
                      font-size: .85em; }
@@ -142,8 +172,8 @@
 <body>
 
 <header>
-  <h1>🔋 充放電サイクル特徴点抽出ツール v3.1</h1>
-  <p>電圧変化ベース検出 + 縦線表示 + ドラッグで手動微調整 + Excel出力</p>
+  <h1>🔋 充放電サイクル特徴点抽出ツール v3.2</h1>
+  <p>電圧変化ベース検出 + 縦線表示 + <b>ドラッグで手動微調整（修正版）</b> + Excel出力</p>
 </header>
 
 <main>
@@ -180,9 +210,9 @@
       </dl>
 
       <div class="tip">
-        📌 <b>検出ロジック (v3 電圧変化ベース)</b>：各サイクルで<br>
-        🔵 <b>青</b> = 放電期間 (Ch2&lt;-閾値) の <b>Ch1 最小値</b> の点 (=底を打った瞬間)<br>
-        🔴 <b>赤</b> = 充電期間 (Ch2&gt;+閾値) の <b>Ch1 最大値</b> の点 (=ピークの瞬間)<br>
+        📌 <b>検出ロジック (電圧変化ベース)</b>：各サイクルで<br>
+        🔵 <b>青</b> = 放電期間 (Ch2&lt;-閾値) の <b>Ch1 最小値</b> の点<br>
+        🔴 <b>赤</b> = 充電期間 (Ch2&gt;+閾値) の <b>Ch1 最大値</b> の点<br>
         🟡 <b>黄</b> = Ch2 が 0→-0.2V に切り替わる <b>1 ステップ前</b><br>
         🟢 <b>緑</b> = Ch2 が 0→-0.2V に切り替わる <b>最初の点</b>
       </div>
@@ -193,14 +223,15 @@
       <table>
         <tr>
           <td><b>青/赤 を左右に動かしたい</b></td>
-          <td>最小/最大値の点で自動決定。<b>下の検証グラフで縦線をドラッグ</b>して手動調整してください。</td>
+          <td>最小/最大値の点で自動決定されるため、パラメータでは動かせません。
+              <b>検証グラフで [✏️ 編集モード] を ON にして縦線をドラッグ</b>してください。</td>
         </tr>
         <tr>
-          <td><b>黄 を左右に動かしたい</b></td>
+          <td><b>黄 を動かしたい</b></td>
           <td>緑の縦線をドラッグ → 黄は連動して緑の 1 ステップ前に移動します。</td>
         </tr>
         <tr>
-          <td><b>緑 を左右に動かしたい</b></td>
+          <td><b>緑 を動かしたい</b></td>
           <td>緑の縦線をドラッグ → その位置が新しい放電開始点になります。</td>
         </tr>
         <tr>
@@ -229,14 +260,18 @@
   </div>
 
   <div class="card hide" id="chartCard">
-    <h2>③ 検証グラフ</h2>
+    <h2>③ 検証グラフ
+      <span class="edit-status off" id="editStatus">閲覧モード</span>
+    </h2>
 
     <div class="edit-hint">
       <b>🖱️ 操作方法</b><br>
-      ・<b>[✏️ 編集モード ON]</b> 中は、縦線をマウスドラッグで動かせます<br>
-      ・動かした縦線に最も近いデータ点の値が自動的に再計算されます<br>
-      ・黄は緑と連動（緑の1つ前の時刻に自動設定）<br>
-      ・編集モード OFF 中：<b>マウスホイール</b>=拡大 / <b>ドラッグ</b>=範囲選択拡大 / <b>Shift+ドラッグ</b>=パン
+      ・<b>閲覧モード</b>: マウスホイールで拡大 / ドラッグで範囲選択拡大 / Shift+ドラッグでパン<br>
+      ・<b>✏️ 編集モード ON</b> にすると、<b>縦線に近い位置でドラッグ</b>して動かせます<br>
+      ・縦線の±15ピクセル以内にカーソルを近づけると <b>↔</b> カーソルに変わります<br>
+      ・ドラッグ可能な縦線: <b>🔵青 / 🔴赤 / 🟢緑</b>（黄は緑に連動して自動移動）<br>
+      ・緑を動かすと黄も連動（緑の1つ前の時刻に自動設定）<br>
+      ・調整した値は結果テーブル／CSV／Excel に自動反映されます
     </div>
 
     <div class="chart-controls">
@@ -270,8 +305,14 @@
       <span class="legend-dot" style="background:#2e7d32"></span>緑 放電開始
     </div>
 
-    <div class="chart-wrap ch1"><canvas id="chart1"></canvas></div>
-    <div class="chart-wrap ch2"><canvas id="chart2"></canvas></div>
+    <div class="chart-wrap ch1">
+      <canvas id="chart1"></canvas>
+      <!-- 編集モード時にイベントを受けるオーバーレイ -->
+      <div class="overlay" id="overlay1"></div>
+    </div>
+    <div class="chart-wrap ch2">
+      <canvas id="chart2"></canvas>
+    </div>
   </div>
 
   <div class="card hide" id="resultCard">
@@ -289,13 +330,13 @@
 
 </main>
 
-<footer>Battery Cycle Extractor v3.1 / ブラウザ内完結・データはサーバー送信されません</footer>
+<footer>Battery Cycle Extractor v3.2 / 編集モード修正版</footer>
 
 <script>
 'use strict';
 
 // =======================================================================
-// 縦線描画プラグイン (Chart.jsグローバル登録)
+// 縦線描画プラグイン
 // =======================================================================
 const verticalLinesPlugin = {
   id: 'verticalLines',
@@ -304,31 +345,34 @@ const verticalLinesPlugin = {
     const cycles = opts.cycles;
     const colors = opts.colors || {};
     const keys = opts.keys || [];
+    const activeDrag = opts.activeDrag; // {cycleIdx, key} or null
     const xScale = chart.scales.x;
     const yScale = chart.scales.y;
     if (!xScale || !yScale) return;
-
     const ctx = chart.ctx;
-    cycles.forEach(c => {
+
+    cycles.forEach((c, ci) => {
       keys.forEach(key => {
         const t = c[key + '_time'];
         if (!t) return;
-        const x = xScale.getPixelForValue(t.getTime ? t.getTime() : t);
+        const timeMs = t.getTime ? t.getTime() : t;
+        const x = xScale.getPixelForValue(timeMs);
         if (x < xScale.left - 1 || x > xScale.right + 1) return;
+        const isActive = activeDrag && activeDrag.cycleIdx === ci && activeDrag.key === key;
         ctx.save();
         ctx.strokeStyle = colors[key] || '#000';
-        ctx.lineWidth = 1.5;
-        ctx.setLineDash([6, 4]);
-        ctx.globalAlpha = 0.65;
+        ctx.lineWidth = isActive ? 3.5 : 1.5;
+        ctx.setLineDash(isActive ? [] : [6, 4]);
+        ctx.globalAlpha = isActive ? 1 : 0.65;
         ctx.beginPath();
         ctx.moveTo(x, yScale.top);
         ctx.lineTo(x, yScale.bottom);
         ctx.stroke();
-        // 上部ラベル
+        // ラベル
         ctx.setLineDash([]);
         ctx.globalAlpha = 1;
         ctx.fillStyle = colors[key] || '#000';
-        ctx.font = 'bold 10px sans-serif';
+        ctx.font = isActive ? 'bold 12px sans-serif' : 'bold 10px sans-serif';
         ctx.textAlign = 'center';
         const letter = key[0].toUpperCase();
         ctx.fillText(letter + c.cycle, x, yScale.top + 10);
@@ -338,18 +382,15 @@ const verticalLinesPlugin = {
   }
 };
 
-// Chart.js が読み込まれ次第登録 (読込順序に依存しないように DOMContentLoaded 内で実施)
 document.addEventListener('DOMContentLoaded', () => {
   if (window.Chart) {
     Chart.register(verticalLinesPlugin);
     console.log('verticalLinesPlugin registered');
-  } else {
-    console.error('Chart.js not loaded!');
   }
 });
 
 // =======================================================================
-// コアロジック
+// コアロジック (電圧変化ベース)
 // =======================================================================
 function classifyState(ch2, thr) {
   if (ch2 >  thr) return 'C';
@@ -452,7 +493,7 @@ function extractCycles(rows, thr) {
 }
 
 // =======================================================================
-// UI / グローバル状態
+// グローバル状態
 // =======================================================================
 const $ = id => document.getElementById(id);
 let currentFile = null, currentRows = null;
@@ -460,7 +501,8 @@ let originalCycles = null;
 let currentCycles = null;
 let chart1 = null, chart2 = null;
 let editMode = false;
-let dragState = null;
+let dragState = null;  // {cycleIdx, key, startX, startTime}
+const HIT_PX = 15;
 
 function log(msg) {
   $('logCard').classList.remove('hide');
@@ -497,7 +539,7 @@ $('runBtn').addEventListener('click', async () => {
     const skip = parseInt($('skip').value, 10);
     const rows = parseCsv(text, skip);
     log(rows.length.toLocaleString() + ' 行を解析');
-    if (rows.length === 0) { log('有効なデータが見つかりません'); return; }
+    if (rows.length === 0) { log('有効データなし'); return; }
 
     const thr = parseFloat($('thr').value);
     const cycles = extractCycles(rows, thr);
@@ -505,7 +547,6 @@ $('runBtn').addEventListener('click', async () => {
     log('処理時間: ' + ((performance.now()-t0)/1000).toFixed(2) + ' 秒');
 
     currentRows = rows;
-    // オリジナルのディープコピー
     originalCycles = cycles.map(c => Object.assign({}, c));
     currentCycles = cycles;
 
@@ -513,13 +554,11 @@ $('runBtn').addEventListener('click', async () => {
     $('rangeFrom').value = 1;
     $('rangeTo').value = Math.min(3, cycles.length);
 
-    // カード表示
     $('chartCard').classList.remove('hide');
     $('resultCard').classList.remove('hide');
 
     renderResult();
 
-    // レイアウト完了後に描画 (これが重要: .hide 解除直後は高さが0の場合があるため)
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         renderChart(1, Math.min(3, cycles.length));
@@ -579,11 +618,7 @@ function fmtDate(d){
 const COLORS = { blue:'#2962ff', red:'#d32f2f', yellow:'#f9a825', green:'#2e7d32' };
 
 function renderChart(cycleFrom, cycleTo) {
-  if (!currentRows || !currentCycles || !currentCycles.length) {
-    console.warn('renderChart: no data');
-    return;
-  }
-  console.log('renderChart called', cycleFrom, cycleTo);
+  if (!currentRows || !currentCycles || !currentCycles.length) return;
 
   let tMin = null, tMax = null;
   let visibleCycles = currentCycles;
@@ -594,10 +629,8 @@ function renderChart(cycleFrom, cycleTo) {
     visibleCycles = currentCycles.slice(cycleFrom - 1, cycleTo);
     if (visibleCycles.length > 0) {
       const pad = 30 * 60 * 1000;
-      const cFrom = visibleCycles[0];
-      const cTo   = visibleCycles[visibleCycles.length - 1];
-      tMin = new Date(cFrom.blue_time.getTime() - pad);
-      tMax = new Date(cTo.green_time.getTime() + pad * 3);
+      tMin = new Date(visibleCycles[0].blue_time.getTime() - pad);
+      tMax = new Date(visibleCycles[visibleCycles.length - 1].green_time.getTime() + pad * 3);
     }
   }
 
@@ -608,7 +641,6 @@ function renderChart(cycleFrom, cycleTo) {
   const maxPoints = 4000;
   const stepSize = Math.max(1, Math.floor(visibleRows.length / maxPoints));
   const sparse = visibleRows.filter((_,i)=> i % stepSize === 0);
-  console.log('data points:', sparse.length);
 
   const ch1Data = sparse.map(r => ({x: r.datetime.getTime(), y: r.ch1}));
   const ch2Data = sparse.map(r => ({x: r.datetime.getTime(), y: r.ch2}));
@@ -633,27 +665,23 @@ function renderChart(cycleFrom, cycleTo) {
   };
   if (tMin && tMax) { xScale.min = tMin.getTime(); xScale.max = tMax.getTime(); }
 
-  const zoomOpts = {
+  // 編集モード時は zoom プラグインの全機能を無効化 (wheel, drag, pan 全部)
+  const zoomOpts = editMode ? {
+    zoom: { wheel: { enabled: false }, drag: { enabled: false }, pinch: { enabled: false }, mode: 'x' },
+    pan:  { enabled: false }
+  } : {
     pan:  { enabled: true, mode: 'x', modifierKey: 'shift' },
     zoom: {
       wheel: { enabled: true },
-      drag:  { enabled: !editMode, backgroundColor: 'rgba(102,126,234,0.15)' },
+      drag:  { enabled: true, backgroundColor: 'rgba(102,126,234,0.15)' },
       mode: 'x',
     }
   };
 
-  const linePluginOpts = {
-    cycles: visibleCycles, colors: COLORS, keys: ['blue','red','yellow','green']
-  };
-
-  // 既存のチャートを破棄
   if (chart1) { chart1.destroy(); chart1 = null; }
   if (chart2) { chart2.destroy(); chart2 = null; }
 
-  const canvas1 = $('chart1');
-  const canvas2 = $('chart2');
-
-  chart1 = new Chart(canvas1, {
+  chart1 = new Chart($('chart1'), {
     type: 'line',
     data: { datasets: [
       { label: 'Ch1', data: ch1Data, borderColor: '#e53935',
@@ -664,19 +692,17 @@ function renderChart(cycleFrom, cycleTo) {
       mkMark(greenPts1, COLORS.green,  '緑 放電開始'),
     ]},
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
-      parsing: false,
-      scales: {
-        x: xScale,
-        y: { title: { display: true, text: 'Ch1 (V)' } }
-      },
+      responsive: true, maintainAspectRatio: false,
+      animation: false, parsing: false,
+      // 編集モード時は Chart.js 本体のイベントも無効化
+      events: editMode ? [] : ['mousemove', 'mouseout', 'click', 'touchstart', 'touchmove'],
+      scales: { x: xScale, y: { title: { display: true, text: 'Ch1 (V)' } } },
       plugins: {
         legend: { position: 'bottom' },
         zoom: zoomOpts,
-        verticalLines: linePluginOpts,
+        verticalLines: { cycles: visibleCycles, colors: COLORS, keys: ['blue','red','yellow','green'] },
         tooltip: {
+          enabled: !editMode,
           callbacks: {
             label: function(ctx) {
               const p = ctx.raw;
@@ -689,7 +715,7 @@ function renderChart(cycleFrom, cycleTo) {
     }
   });
 
-  chart2 = new Chart(canvas2, {
+  chart2 = new Chart($('chart2'), {
     type: 'line',
     data: { datasets: [
       { label: 'Ch2', data: ch2Data, borderColor: '#b8a000',
@@ -697,14 +723,10 @@ function renderChart(cycleFrom, cycleTo) {
       mkMark(greenPts2, COLORS.green, '緑 Ch2'),
     ]},
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
-      parsing: false,
-      scales: {
-        x: xScale,
-        y: { title: { display: true, text: 'Ch2 (V)' } }
-      },
+      responsive: true, maintainAspectRatio: false,
+      animation: false, parsing: false,
+      events: editMode ? [] : ['mousemove', 'mouseout', 'click'],
+      scales: { x: xScale, y: { title: { display: true, text: 'Ch2 (V)' } } },
       plugins: {
         legend: { position: 'bottom' },
         zoom: zoomOpts,
@@ -713,76 +735,154 @@ function renderChart(cycleFrom, cycleTo) {
     }
   });
 
-  attachDragHandlers();
-  console.log('charts created');
+  console.log('charts rendered, editMode =', editMode);
 }
 
 // =======================================================================
-// ドラッグ編集
+// オーバーレイによるドラッグ処理 (Chart.js のイベントを回避)
+// オーバーレイは編集モードON時のみ pointer-events:auto になる
 // =======================================================================
-function attachDragHandlers() {
+function initOverlay() {
+  const overlay = $('overlay1');
+  overlay.addEventListener('mousedown', onOverlayDown);
+  overlay.addEventListener('mousemove', onOverlayMove);
+  overlay.addEventListener('mouseup',   onOverlayUp);
+  overlay.addEventListener('mouseleave', onOverlayUp);
+  // touch対応
+  overlay.addEventListener('touchstart', onOverlayTouchStart, {passive: false});
+  overlay.addEventListener('touchmove',  onOverlayTouchMove,  {passive: false});
+  overlay.addEventListener('touchend',   onOverlayTouchEnd);
+}
+
+function overlayToCanvasPos(e) {
+  // オーバーレイは canvas の上 (top:8,left:8) にあるため補正
   const canvas = $('chart1');
-  canvas.onmousedown = onMouseDown;
-  canvas.onmousemove = onMouseMove;
-  canvas.onmouseup   = onMouseUp;
-  canvas.onmouseleave = onMouseUp;
+  const canvasRect = canvas.getBoundingClientRect();
+  let clientX, clientY;
+  if (e.touches && e.touches[0]) {
+    clientX = e.touches[0].clientX;
+    clientY = e.touches[0].clientY;
+  } else {
+    clientX = e.clientX;
+    clientY = e.clientY;
+  }
+  return { x: clientX - canvasRect.left, y: clientY - canvasRect.top };
 }
 
-function onMouseMove(e) {
-  if (!editMode || !chart1) return;
-  if (dragState) { handleDrag(e); return; }
-  const hit = findNearestLine(e);
-  e.target.style.cursor = hit ? 'ew-resize' : 'default';
-}
-
-function onMouseDown(e) {
-  if (!editMode || !chart1) return;
-  const hit = findNearestLine(e);
-  if (hit) { dragState = hit; e.preventDefault(); }
-}
-
-function onMouseUp() {
-  if (dragState) { dragState = null; renderResult(); }
-}
-
-function findNearestLine(event) {
-  const rect = event.target.getBoundingClientRect();
-  const mx = event.clientX - rect.left;
+function findNearestLine(canvasX) {
+  if (!chart1) return null;
   const xScale = chart1.scales.x;
-  if (mx < xScale.left || mx > xScale.right) return null;
-  const thresholdPx = 10;
+  if (canvasX < xScale.left - 5 || canvasX > xScale.right + 5) return null;
+
+  const visibleCycles = chart1.options.plugins.verticalLines.cycles;
+  // 黄は緑と連動して動くため、直接ドラッグ対象から除外。緑だけが狙える対象。
+  const draggableKeys = ['blue', 'red', 'green'];
   let best = null, bestDist = Infinity;
-  currentCycles.forEach((c, idx) => {
-    ['blue','red','yellow','green'].forEach(key => {
-      const t = c[key + '_time'].getTime();
+  visibleCycles.forEach(c => {
+    const realIdx = currentCycles.findIndex(cc => cc.cycle === c.cycle);
+    if (realIdx < 0) return;
+    draggableKeys.forEach(key => {
+      const t = currentCycles[realIdx][key + '_time'].getTime();
       if (t < xScale.min || t > xScale.max) return;
       const x = xScale.getPixelForValue(t);
-      const dist = Math.abs(x - mx);
-      if (dist < thresholdPx && dist < bestDist) {
-        bestDist = dist; best = { cycleIdx: idx, color: key };
+      const dist = Math.abs(x - canvasX);
+      if (dist < HIT_PX && dist < bestDist) {
+        bestDist = dist;
+        best = { cycleIdx: realIdx, key: key };
       }
     });
   });
   return best;
 }
 
-function handleDrag(event) {
-  if (!dragState) return;
-  const rect = event.target.getBoundingClientRect();
-  const mx = event.clientX - rect.left;
+function onOverlayDown(e) {
+  if (!editMode || !chart1) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const pos = overlayToCanvasPos(e);
+  const hit = findNearestLine(pos.x);
+  log('mousedown at x=' + pos.x.toFixed(1) + ' hit=' + (hit ? JSON.stringify(hit) : 'none'));
+  if (hit) {
+    dragState = hit;
+    document.body.classList.add('dragging');
+    // プラグインに知らせて当該縦線をハイライト
+    updateActiveDragHighlight();
+  }
+}
+
+function onOverlayMove(e) {
+  if (!editMode || !chart1) return;
+  const pos = overlayToCanvasPos(e);
+  if (dragState) {
+    e.preventDefault();
+    handleDrag(pos.x);
+  } else {
+    const hit = findNearestLine(pos.x);
+    e.target.style.cursor = hit ? 'ew-resize' : 'crosshair';
+  }
+}
+
+function onOverlayUp(e) {
+  if (dragState) {
+    log('mouseup: drag complete');
+    dragState = null;
+    document.body.classList.remove('dragging');
+    updateActiveDragHighlight();
+    renderResult();
+  }
+}
+
+function onOverlayTouchStart(e) {
+  if (!editMode || !chart1) return;
+  const pos = overlayToCanvasPos(e);
+  const hit = findNearestLine(pos.x);
+  if (hit) {
+    e.preventDefault();
+    dragState = hit;
+    document.body.classList.add('dragging');
+    updateActiveDragHighlight();
+  }
+}
+function onOverlayTouchMove(e) {
+  if (!editMode || !chart1 || !dragState) return;
+  e.preventDefault();
+  const pos = overlayToCanvasPos(e);
+  handleDrag(pos.x);
+}
+function onOverlayTouchEnd() {
+  if (dragState) {
+    dragState = null;
+    document.body.classList.remove('dragging');
+    updateActiveDragHighlight();
+    renderResult();
+  }
+}
+
+function handleDrag(canvasX) {
+  if (!dragState || !chart1) return;
   const xScale = chart1.scales.x;
-  const newTimeMs = xScale.getValueForPixel(mx);
+  const cx = Math.max(xScale.left, Math.min(xScale.right, canvasX));
+  const newTimeMs = xScale.getValueForPixel(cx);
   if (newTimeMs == null) return;
 
+  // 最も近いデータ点にスナップ
   let bestIdx = 0, bestDist = Infinity;
-  for (let i = 0; i < currentRows.length; i++) {
+  // バイナリサーチ的に高速化 (データは時間順ソート想定)
+  let lo = 0, hi = currentRows.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const t = currentRows[mid].datetime.getTime();
+    if (t < newTimeMs) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  // lo 付近が候補
+  for (let i = Math.max(0, hi); i <= Math.min(currentRows.length - 1, lo); i++) {
     const d = Math.abs(currentRows[i].datetime.getTime() - newTimeMs);
     if (d < bestDist) { bestDist = d; bestIdx = i; }
-    if (d === 0) break;
   }
 
   const c = currentCycles[dragState.cycleIdx];
-  const key = dragState.color;
+  const key = dragState.key;
   c[key + '_idx'] = bestIdx;
   c[key + '_time'] = currentRows[bestIdx].datetime;
   c[key + '_ch1']  = currentRows[bestIdx].ch1;
@@ -795,6 +895,16 @@ function handleDrag(event) {
   }
   c.edited = true;
   updateChartPoints();
+}
+
+function updateActiveDragHighlight() {
+  if (!chart1) return;
+  chart1.options.plugins.verticalLines.activeDrag = dragState;
+  chart1.update('none');
+  if (chart2) {
+    chart2.options.plugins.verticalLines.activeDrag = dragState && dragState.key === 'green' ? dragState : null;
+    chart2.update('none');
+  }
 }
 
 function updateChartPoints() {
@@ -811,11 +921,13 @@ function updateChartPoints() {
   chart1.data.datasets[3].data = filtered.map(c => ({x:c.yellow_time.getTime(), y:c.yellow_ch1, _cycle:c.cycle}));
   chart1.data.datasets[4].data = filtered.map(c => ({x:c.green_time.getTime(),  y:c.green_ch1,  _cycle:c.cycle}));
   chart1.options.plugins.verticalLines.cycles = filtered;
+  chart1.options.plugins.verticalLines.activeDrag = dragState;
   chart1.update('none');
 
   if (chart2) {
     chart2.data.datasets[1].data = filtered.map(c => ({x:c.green_time.getTime(), y:c.green_ch2, _cycle:c.cycle}));
     chart2.options.plugins.verticalLines.cycles = filtered;
+    chart2.options.plugins.verticalLines.activeDrag = dragState && dragState.key === 'green' ? dragState : null;
     chart2.update('none');
   }
 }
@@ -851,13 +963,32 @@ $('btnResetZoom').addEventListener('click', () => {
 
 $('btnEditToggle').addEventListener('click', () => {
   editMode = !editMode;
-  $('btnEditToggle').textContent = editMode ? '✏️ 編集モード ON' : '✏️ 編集モード OFF';
-  $('btnEditToggle').classList.toggle('success', editMode);
-  $('btnEditToggle').classList.toggle('warn', !editMode);
-  if (chart1 && chart2) {
-    chart1.options.plugins.zoom.zoom.drag.enabled = !editMode;
-    chart2.options.plugins.zoom.zoom.drag.enabled = !editMode;
-    chart1.update('none'); chart2.update('none');
+  const btn = $('btnEditToggle');
+  const status = $('editStatus');
+  if (editMode) {
+    btn.textContent = '✏️ 編集モード ON';
+    btn.classList.remove('warn'); btn.classList.add('danger', 'active-edit');
+    status.textContent = '✏️ 編集モード (縦線をドラッグできます)';
+    status.classList.remove('off'); status.classList.add('on');
+    document.body.classList.add('edit-mode');
+  } else {
+    btn.textContent = '✏️ 編集モード OFF';
+    btn.classList.remove('danger', 'active-edit'); btn.classList.add('warn');
+    status.textContent = '閲覧モード';
+    status.classList.remove('on'); status.classList.add('off');
+    document.body.classList.remove('edit-mode', 'dragging');
+    dragState = null;
+  }
+  log('編集モード: ' + (editMode ? 'ON' : 'OFF'));
+  // 現在の表示範囲で再描画（zoom/events 設定を切り替えるため）
+  const f = parseInt($('rangeFrom').value, 10);
+  const t = parseInt($('rangeTo').value, 10);
+  if (currentCycles) {
+    if (f === 1 && t === currentCycles.length) {
+      renderChart(null, null);
+    } else {
+      renderChart(f, t);
+    }
   }
 });
 
@@ -866,7 +997,9 @@ $('btnUndoAll').addEventListener('click', () => {
   if (!confirm('全ての手動調整を元に戻しますか？')) return;
   currentCycles = originalCycles.map(c => Object.assign({}, c, { edited: false }));
   renderResult();
-  renderChart(null, null);
+  const f = parseInt($('rangeFrom').value, 10);
+  const t = parseInt($('rangeTo').value, 10);
+  renderChart(f, t);
 });
 
 // =======================================================================
@@ -917,6 +1050,15 @@ $('dlCsv').addEventListener('click', () => {
   a.download = base + '_cycles.csv';
   a.click();
 });
+
+// 初期化: オーバーレイのイベント設定
+document.addEventListener('DOMContentLoaded', () => {
+  initOverlay();
+});
+// DOMContentLoaded が既に発火済みの場合
+if (document.readyState !== 'loading') {
+  initOverlay();
+}
 </script>
 </body>
 </html>
