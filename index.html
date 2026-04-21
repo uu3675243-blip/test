@@ -6,6 +6,7 @@
   <title>Battery Cycle Extractor v4</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
     :root {
       --bg: #f6f8fb;
@@ -194,7 +195,6 @@
           <input id="fileInput" type="file" accept=".csv" />
           <div class="actions">
             <button id="runBtn">▶ 解析実行</button>
-            <button id="downloadBtn" class="secondary" disabled>CSVダウンロード</button>
           </div>
           <div id="status" class="note" style="margin-top:12px">CSVを選択してから解析してください。</div>
         </section>
@@ -307,8 +307,14 @@
         </section>
 
         <section class="card">
-          <h2>⑤ 抽出結果</h2>
-          <div class="table-wrap">
+          <div class="row" style="justify-content:space-between;align-items:center;">
+            <h2 style="margin:0">⑤ 抽出結果</h2>
+            <div class="row">
+              <button id="downloadCsvBtn" class="secondary" disabled>⬇ CSV出力</button>
+              <button id="downloadXlsxBtn" disabled>⬇ Excel出力</button>
+            </div>
+          </div>
+          <div class="table-wrap" style="margin-top:12px">
             <table id="resultTable">
               <thead>
                 <tr>
@@ -479,25 +485,43 @@
     }
     metricEdited.textContent = String(editedCount);
     $('resetEdits').disabled = editedCount === 0;
-    $('downloadBtn').disabled = state.cycles.length === 0;
+    const noCycles = state.cycles.length === 0;
+    $('downloadCsvBtn').disabled = noCycles;
+    $('downloadXlsxBtn').disabled = noCycles;
+  }
+
+  const EXPORT_HEADER = ['A_サイクル番号','B_青_放電終了_Ch1(V)','C_赤_充電ピーク_Ch1(V)','D_黄_放電開始直前_Ch1(V)','E_緑_放電開始_Ch1(V)','F_緑_放電開始_Ch2(V)','G_青_時刻(放電終了)','H_赤_時刻(充電ピーク)','I_黄_時刻(放電直前)','J_緑_時刻(放電開始)','K_手動調整フラグ'];
+
+  function rowsForExport() {
+    const rows = [];
+    for (const c of state.cycles) {
+      const o = cycleToObject(c);
+      rows.push([o.cycleNo, Number(fmtNum(o.B)), Number(fmtNum(o.C)), Number(fmtNum(o.D)), Number(fmtNum(o.E)), Number(fmtNum(o.F)), o.G, o.H, o.I, o.J, o.edited]);
+    }
+    return rows;
   }
 
   function exportCsv() {
-    const header = ['A_サイクル番号','B_青_放電終了_Ch1(V)','C_赤_充電ピーク_Ch1(V)','D_黄_放電開始直前_Ch1(V)','E_緑_放電開始_Ch1(V)','F_緑_放電開始_Ch2(V)','G_青_時刻(放電終了)','H_赤_時刻(充電ピーク)','I_黄_時刻(放電直前)','J_緑_時刻(放電開始)','K_手動調整フラグ'];
-    const lines = [header.join(',')];
-    for (const c of state.cycles) {
-      const o = cycleToObject(c);
-      lines.push([
-        o.cycleNo, fmtNum(o.B), fmtNum(o.C), fmtNum(o.D), fmtNum(o.E), fmtNum(o.F),
-        o.G, o.H, o.I, o.J, o.edited
-      ].map(v => `"${String(v)}"`).join(','));
-    }
+    const rows = rowsForExport();
+    const lines = [EXPORT_HEADER.join(',')];
+    for (const r of rows) lines.push(r.map(v => `"${String(v)}"`).join(','));
     const blob = new Blob(['\uFEFF' + lines.join('\n')], { type:'text/csv;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = 'battery_cycles.csv';
     a.click();
     URL.revokeObjectURL(a.href);
+  }
+
+  function exportXlsx() {
+    if (typeof XLSX === 'undefined') { alert('Excel出力ライブラリを読み込めませんでした。'); return; }
+    const rows = rowsForExport();
+    const aoa = [EXPORT_HEADER, ...rows];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{wch:8},{wch:18},{wch:18},{wch:18},{wch:18},{wch:18},{wch:22},{wch:22},{wch:22},{wch:22},{wch:14}];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Cycles');
+    XLSX.writeFile(wb, 'battery_cycles.xlsx');
   }
 
   function getVisibleCycles() {
@@ -540,9 +564,28 @@
       if (!lines.length) return;
       const {ctx, chartArea, scales} = chart;
       const xScale = scales.x;
+      const pxList = lines.map(ln => xScale.getPixelForValue(ln.x));
+      // Assign lanes to avoid label overlap: process lines left→right,
+      // reuse a lane only if the previous label ended far enough before.
+      const order = pxList.map((_, i) => i).sort((a, b) => pxList[a] - pxList[b]);
+      const laneHeight = 16;
+      const labelLayout = new Array(lines.length).fill(0);
+      const lanes = [];
+      const GAP = 36;
+      for (const i of order) {
+        const px = pxList[i];
+        let lane = -1;
+        for (let k = 0; k < lanes.length; k++) {
+          if (px - lanes[k] >= GAP) { lane = k; break; }
+        }
+        if (lane === -1) { lane = lanes.length; lanes.push(0); }
+        lanes[lane] = px;
+        labelLayout[i] = lane;
+      }
       ctx.save();
-      for (const ln of lines) {
-        const x = xScale.getPixelForValue(ln.x);
+      for (let i = 0; i < lines.length; i++) {
+        const ln = lines[i];
+        const x = pxList[i];
         ctx.beginPath();
         ctx.strokeStyle = ln.color;
         ctx.lineWidth = ln.active ? 3.2 : 1.6;
@@ -550,10 +593,20 @@
         ctx.moveTo(x, chartArea.top);
         ctx.lineTo(x, chartArea.bottom);
         ctx.stroke();
-        ctx.setLineDash([]);
+      }
+      ctx.setLineDash([]);
+      ctx.font = 'bold 12px sans-serif';
+      for (let i = 0; i < lines.length; i++) {
+        const ln = lines[i];
+        const x = pxList[i];
+        const lane = labelLayout[i];
+        const ly = chartArea.top + 12 + lane * laneHeight;
+        const w = ctx.measureText(ln.label).width + 6;
+        // background for readability
+        ctx.fillStyle = 'rgba(255,255,255,0.82)';
+        ctx.fillRect(x + 3, ly - 11, w, 14);
         ctx.fillStyle = ln.color;
-        ctx.font = 'bold 12px sans-serif';
-        ctx.fillText(ln.label, x + 4, chartArea.top + 14 + (ln.labelOffset || 0));
+        ctx.fillText(ln.label, x + 5, ly);
       }
       ctx.restore();
     }
@@ -591,9 +644,9 @@
     for (const c of vis) {
       const b = rowAt(c.blueIdx), r = rowAt(c.redIdx), y = rowAt(c.yellowIdx), g = rowAt(c.greenIdx);
       lines.push({ x:b.x, color:COLORS.blue, label:`B${c.cycleNo}`, active: activeKey==='blue' && activeCycle===c.cycleNo });
-      lines.push({ x:r.x, color:COLORS.red, label:`R${c.cycleNo}`, labelOffset: 14, active: activeKey==='red' && activeCycle===c.cycleNo });
-      lines.push({ x:y.x, color:COLORS.yellow, label:`Y${c.cycleNo}`, labelOffset: 28, active: activeKey==='yellow' && activeCycle===c.cycleNo });
-      lines.push({ x:g.x, color:COLORS.green, label:`G${c.cycleNo}`, labelOffset: 42, active: activeKey==='green' && activeCycle===c.cycleNo });
+      lines.push({ x:r.x, color:COLORS.red, label:`R${c.cycleNo}`, active: activeKey==='red' && activeCycle===c.cycleNo });
+      lines.push({ x:y.x, color:COLORS.yellow, label:`Y${c.cycleNo}`, active: activeKey==='yellow' && activeCycle===c.cycleNo });
+      lines.push({ x:g.x, color:COLORS.green, label:`G${c.cycleNo}`, active: activeKey==='green' && activeCycle===c.cycleNo });
     }
     return lines;
   }
@@ -805,7 +858,8 @@
   }
 
   $('runBtn').addEventListener('click', runAnalysis);
-  $('downloadBtn').addEventListener('click', exportCsv);
+  $('downloadCsvBtn').addEventListener('click', exportCsv);
+  $('downloadXlsxBtn').addEventListener('click', exportXlsx);
   $('editToggle').addEventListener('click', () => {
     state.editMode = !state.editMode;
     updateOverlayState();
