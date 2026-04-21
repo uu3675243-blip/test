@@ -1,1064 +1,830 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>充放電サイクル特徴点抽出ツール (v3.2)</title>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
-<style>
-  * { box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
-           "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
-         margin: 0; padding: 0; background: #f5f7fa; color: #2c3e50; }
-  header { background: linear-gradient(135deg,#667eea,#764ba2); color: white;
-           padding: 24px 32px; box-shadow: 0 2px 8px rgba(0,0,0,.1); }
-  header h1 { margin: 0; font-size: 1.5em; }
-  header p { margin: 6px 0 0; opacity: .9; font-size: .9em; }
-  main { max-width: 1400px; margin: 24px auto; padding: 0 24px; }
-  .card { background: white; border-radius: 12px; padding: 24px;
-          margin-bottom: 20px; box-shadow: 0 2px 12px rgba(0,0,0,.06); }
-  .card h2 { margin-top: 0; color: #34495e; font-size: 1.15em;
-             border-left: 4px solid #667eea; padding-left: 10px; }
-  .drop-zone { border: 2px dashed #b0bec5; border-radius: 10px;
-               padding: 40px; text-align: center; cursor: pointer;
-               transition: all .2s; }
-  .drop-zone:hover, .drop-zone.dragover { background: #eef2ff;
-                                           border-color: #667eea; }
-  .drop-zone .icon { font-size: 3em; color: #90a4ae; }
-  .drop-zone .label { margin-top: 8px; color: #546e7a; }
-  input[type=file] { display: none; }
-
-  .param-help {
-    background: #f0f4ff; border-left: 4px solid #667eea;
-    padding: 14px 18px; border-radius: 6px; margin-bottom: 12px;
-    font-size: .88em; line-height: 1.7;
-  }
-  .param-help h3 { margin: 0 0 8px; color: #3949ab; font-size: 1em; }
-  .param-help dl { margin: 0; display: grid;
-                   grid-template-columns: max-content 1fr; gap: 4px 12px; }
-  .param-help dt { font-weight: 700; color: #1a237e; }
-  .param-help dd { margin: 0; color: #37474f; }
-  .param-help .tip { margin-top: 10px; padding: 8px 12px;
-                      background: #fff8e1; border-radius: 4px;
-                      color: #6a5100; font-size: .9em; }
-  .param-help code { background: #263238; color: #aed581;
-                     padding: 1px 6px; border-radius: 3px; font-size: .92em; }
-  .adjust-guide {
-    margin-top: 10px; padding: 10px 14px;
-    background: #fff3e0; border-left: 4px solid #ff9800;
-    border-radius: 6px; font-size: .88em;
-  }
-  .adjust-guide b { color: #e65100; }
-  .adjust-guide table { width: 100%; margin-top: 6px;
-                         border-collapse: collapse; }
-  .adjust-guide td { padding: 4px 8px; border: 1px solid #ffcc80;
-                      font-size: .88em; }
-  .adjust-guide td:first-child { width: 30%; }
-
-  .params { display: grid;
-            grid-template-columns: repeat(auto-fit,minmax(250px,1fr));
-            gap: 14px; margin-top: 12px; }
-  .params label { display: flex; flex-direction: column; gap: 4px;
-                  font-size: .9em; color: #546e7a; }
-  .params label .hint { font-size: .78em; color: #90a4ae;
-                        font-weight: normal; }
-  .params input { padding: 8px 10px; border: 1px solid #cfd8dc;
-                  border-radius: 6px; font-size: 1em; }
-  .btn { background: linear-gradient(135deg,#667eea,#764ba2); color: white;
-         border: none; padding: 10px 22px; border-radius: 6px;
-         cursor: pointer; font-size: .95em; font-weight: 600;
-         margin-right: 8px; margin-top: 8px; }
-  .btn:disabled { opacity: .5; cursor: not-allowed; }
-  .btn.secondary { background: #607d8b; }
-  .btn.small { padding: 6px 12px; font-size: .85em; }
-  .btn.success { background: linear-gradient(135deg,#43a047,#2e7d32); }
-  .btn.warn { background: linear-gradient(135deg,#ff9800,#f57c00); }
-  .btn.danger { background: linear-gradient(135deg,#e53935,#c62828); }
-  .btn.active-edit { background: linear-gradient(135deg,#d32f2f,#b71c1c)!important;
-                     box-shadow: 0 0 0 3px rgba(211,47,47,.25); }
-
-  .chart-controls {
-    display: flex; flex-wrap: wrap; align-items: center;
-    gap: 10px; margin-bottom: 12px;
-    padding: 10px 14px; background: #f5f7fa; border-radius: 8px;
-  }
-  .chart-controls label { font-size: .88em; color: #546e7a;
-                          display: flex; align-items: center; gap: 6px; }
-  .chart-controls input[type=number] {
-    width: 70px; padding: 5px 8px; border: 1px solid #cfd8dc;
-    border-radius: 4px; font-size: .9em;
-  }
-
-  /* === Canvas親: position:relative + 明示的な高さ === */
-  .chart-wrap {
-    position: relative;
-    width: 100%;
-    margin-top: 10px;
-    background: #fff;
-    border: 1px solid #e0e0e0;
-    border-radius: 6px;
-    padding: 8px;
-  }
-  .chart-wrap.ch1 { height: 460px; }
-  .chart-wrap.ch2 { height: 220px; margin-top: 8px; }
-
-  /* === 編集モード用オーバーレイ === */
-  .chart-wrap .overlay {
-    position: absolute;
-    top: 8px; left: 8px; right: 8px; bottom: 8px;
-    pointer-events: none;  /* 通常は無視 */
-    z-index: 10;
-    cursor: default;
-  }
-  body.edit-mode .chart-wrap .overlay {
-    pointer-events: auto;   /* 編集モード時のみイベント受信 */
-    cursor: crosshair;
-  }
-  body.edit-mode.dragging .chart-wrap .overlay {
-    cursor: grabbing;
-  }
-  body.edit-mode .chart-wrap {
-    box-shadow: 0 0 0 3px rgba(211,47,47,.3);
-    border-color: #d32f2f;
-  }
-
-  .edit-hint {
-    padding: 12px 16px; background: #e8f5e9;
-    border-left: 4px solid #43a047; border-radius: 6px;
-    margin-bottom: 12px; font-size: .9em; color: #1b5e20;
-  }
-  .edit-hint b { color: #2e7d32; }
-  .edit-status {
-    display: inline-block; padding: 4px 10px;
-    border-radius: 12px; font-size: .85em; font-weight: 600;
-    margin-left: 10px;
-  }
-  .edit-status.on { background: #d32f2f; color: white; }
-  .edit-status.off { background: #90a4ae; color: white; }
-
-  table.result-tbl { width: 100%; border-collapse: collapse; margin-top: 12px;
-                     font-size: .85em; }
-  table.result-tbl th, table.result-tbl td {
-    padding: 5px 8px; border: 1px solid #e0e0e0; text-align: right;
-    white-space: nowrap; }
-  table.result-tbl th { background: #eceff1; color: #37474f; font-weight: 600;
-                        position: sticky; top: 0; }
-  table.result-tbl td:first-child, table.result-tbl th:first-child {
-    text-align: center; }
-  table.result-tbl tr:nth-child(even) td { background: #fafbfc; }
-  table.result-tbl tr.edited td { background: #fff9c4 !important; }
-
-  .summary { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; }
-  .stat { background: #eef2ff; padding: 10px 18px; border-radius: 8px;
-          min-width: 140px; }
-  .stat .v { font-size: 1.6em; font-weight: 700; color: #667eea; }
-  .stat .l { font-size: .82em; color: #546e7a; }
-  #log { max-height: 140px; overflow-y: auto; font-family: monospace;
-         font-size: .85em; background: #263238; color: #aed581;
-         padding: 12px; border-radius: 6px; white-space: pre-wrap; }
-  .legend-dot { display: inline-block; width: 10px; height: 10px;
-                border-radius: 50%; margin-right: 4px; vertical-align: middle; }
-  .legend-line { display: inline-block; width: 16px; height: 0;
-                 margin-right: 4px; vertical-align: middle;
-                 border-top: 2px dashed; }
-  .hide { display: none; }
-  footer { text-align: center; color: #90a4ae; font-size: .82em;
-           padding: 24px 0; }
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Battery Cycle Extractor v4</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+  <style>
+    :root {
+      --bg: #f6f8fb;
+      --card: #ffffff;
+      --line: #d7dfeb;
+      --text: #163047;
+      --sub: #5c7186;
+      --blue: #1f78ff;
+      --red: #e53935;
+      --yellow: #ffb300;
+      --green: #1f9d55;
+      --green2: #00897b;
+      --edit: #d32f2f;
+      --warn: #fff8e1;
+      --ok: #eef8f0;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    .container { max-width: 1480px; margin: 0 auto; padding: 20px; }
+    h1, h2, h3 { margin: 0 0 12px; }
+    p, li { color: var(--text); }
+    .sub { color: var(--sub); }
+    .grid {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 16px;
+      align-items: start;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: 0 6px 22px rgba(16, 42, 67, .05);
+      padding: 16px;
+    }
+    .stack { display: grid; gap: 16px; }
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .row > * { flex: 0 0 auto; }
+    label { font-size: 13px; font-weight: 700; display: block; margin-bottom: 4px; }
+    input[type="number"], input[type="file"] {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #c8d4e3;
+      border-radius: 10px;
+      background: white;
+      color: var(--text);
+    }
+    .param-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .param {
+      border: 1px solid #e4ebf3;
+      border-radius: 12px;
+      padding: 10px;
+      background: #fbfdff;
+    }
+    .param small { color: var(--sub); display: block; margin-top: 6px; }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 14px;
+      cursor: pointer;
+      font-weight: 700;
+      color: white;
+      background: #2058d6;
+    }
+    button.secondary { background: #607d8b; }
+    button.ghost { background: #eaf0f7; color: #24415f; }
+    button.warn { background: var(--edit); }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #eef4ff;
+      color: #214f9b;
+      font-weight: 700;
+      font-size: 12px;
+    }
+    .edit-on {
+      background: #fff1f1;
+      color: #b71c1c;
+      border: 1px solid #ffc9c9;
+    }
+    .chart-card.editing {
+      border-color: #ff8a80;
+      box-shadow: 0 0 0 3px rgba(211,47,47,.08);
+    }
+    .chart-wrap {
+      position: relative;
+      height: 430px;
+      border: 1px solid #e4ebf3;
+      border-radius: 12px;
+      overflow: hidden;
+      background: white;
+    }
+    .chart-wrap.small { height: 210px; margin-top: 14px; }
+    .chart-overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 20;
+    }
+    .chart-overlay.editable { pointer-events: auto; }
+    .chart-overlay.editable:hover { cursor: crosshair; }
+    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+    .toolbar input { width: 90px; }
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(120px, 1fr));
+      gap: 10px;
+      margin: 10px 0 14px;
+    }
+    .metric {
+      background: #f8fbff;
+      border: 1px solid #e1ebf6;
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .metric b { font-size: 20px; display: block; }
+    .note {
+      background: #fffdf1;
+      border: 1px solid #f3e4a2;
+      border-radius: 12px;
+      padding: 12px;
+      font-size: 14px;
+    }
+    .guide-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .guide-table th, .guide-table td {
+      border: 1px solid #dde7f2;
+      padding: 8px;
+      vertical-align: top;
+    }
+    .guide-table th { background: #f3f8ff; }
+    .table-wrap { overflow: auto; max-height: 480px; border: 1px solid #e4ebf3; border-radius: 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { border-bottom: 1px solid #edf2f7; padding: 7px 8px; white-space: nowrap; }
+    thead th { position: sticky; top: 0; background: #f7fbff; z-index: 1; }
+    tr.edited { background: #fff7cc; }
+    .legend {
+      display: flex; gap: 14px; flex-wrap: wrap; margin: 6px 0 10px;
+      font-size: 13px;
+    }
+    .legend span::before {
+      content: "";
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    .legend .b::before { background: var(--blue); }
+    .legend .r::before { background: var(--red); }
+    .legend .y::before { background: var(--yellow); }
+    .legend .g::before { background: var(--green); }
+    .footer-links { display: flex; gap: 10px; flex-wrap: wrap; }
+    code { background: #eef4fb; padding: 2px 5px; border-radius: 6px; }
+    @media (max-width: 1100px) {
+      .grid { grid-template-columns: 1fr; }
+      .summary { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
+    }
+  </style>
 </head>
 <body>
+  <div class="container">
+    <h1>Battery Cycle Extractor v4</h1>
+    <p class="sub">青・赤・黄・緑を <b>電圧変化ベース</b> で自動抽出し、<b>縦線 + 丸</b> で検証できます。編集モードでは各マーカーを <b>独立</b> に動かせます。緑を動かしても黄色は自動では動きません。</p>
 
-<header>
-  <h1>🔋 充放電サイクル特徴点抽出ツール v3.2</h1>
-  <p>電圧変化ベース検出 + 縦線表示 + <b>ドラッグで手動微調整（修正版）</b> + Excel出力</p>
-</header>
+    <div class="grid">
+      <div class="stack">
+        <section class="card">
+          <h2>① CSV入力</h2>
+          <label for="fileInput">元データ CSV</label>
+          <input id="fileInput" type="file" accept=".csv" />
+          <div class="actions">
+            <button id="runBtn">▶ 解析実行</button>
+            <button id="downloadBtn" class="secondary" disabled>CSVダウンロード</button>
+          </div>
+          <div id="status" class="note" style="margin-top:12px">CSVを選択してから解析してください。</div>
+        </section>
 
-<main>
+        <section class="card">
+          <h2>② パラメータ</h2>
+          <div class="param-grid">
+            <div class="param">
+              <label for="skiprows">ヘッダ行数</label>
+              <input id="skiprows" type="number" value="3" step="1" />
+              <small>通常は <code>3</code>。先頭の見出し行数が違うCSVだけ変更。</small>
+            </div>
+            <div class="param">
+              <label for="ch2Threshold">Ch2 状態判定閾値 [V]</label>
+              <input id="ch2Threshold" type="number" value="0.1" step="0.01" />
+              <small>Ch2 が +閾値超えで充電、-閾値未満で放電。黄/緑の位置に影響。</small>
+            </div>
+            <div class="param">
+              <label for="blueShift">青 オフセット [サンプル]</label>
+              <input id="blueShift" type="number" value="0" step="1" />
+              <small>放電区間の最小電圧から左右にずらす。<b>-1で左へ</b>、<b>+1で右へ</b>。</small>
+            </div>
+            <div class="param">
+              <label for="redShift">赤 オフセット [サンプル]</label>
+              <input id="redShift" type="number" value="0" step="1" />
+              <small>充電区間の最大電圧から左右にずらす。<b>-1で左</b>、<b>+1で右</b>。</small>
+            </div>
+            <div class="param">
+              <label for="yellowShift">黄 オフセット [サンプル]</label>
+              <input id="yellowShift" type="number" value="0" step="1" />
+              <small>既定値は「放電開始直前」。<b>-1</b> でさらに左、<b>+1</b> で右。</small>
+            </div>
+            <div class="param">
+              <label for="greenShift">緑 オフセット [サンプル]</label>
+              <input id="greenShift" type="number" value="0" step="1" />
+              <small>既定値は「放電開始点」。<b>-1</b> で左、<b>+1</b> で右。</small>
+            </div>
+          </div>
+          <div class="note" style="margin-top:12px">
+            <b>丸を左右に動かしたいときの考え方</b><br>
+            まずは編集モードで直接ドラッグするのが確実です。自動検出の基準自体を変えたいときだけ、上のオフセットを使ってください。<br>
+            例: サンプリング間隔が10秒なら <code>+3</code> は約30秒右、<code>-2</code> は約20秒左です。
+          </div>
+        </section>
 
-  <div class="card">
-    <h2>① CSVファイルを選択</h2>
-    <label for="file" class="drop-zone" id="dropZone">
-      <div class="icon">📁</div>
-      <div class="label"><b>クリック</b>または<b>ドラッグ＆ドロップ</b></div>
-      <div class="label" id="fileName" style="color:#667eea;font-weight:600;"></div>
-    </label>
-    <input type="file" id="file" accept=".csv,text/csv,text/plain">
-  </div>
+        <section class="card">
+          <h2>③ マーカー定義</h2>
+          <table class="guide-table">
+            <thead>
+              <tr><th>色</th><th>定義</th><th>自動判定方法</th><th>左右に動かす方法</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>青</td><td>放電しきった点</td><td>放電区間(D)の Ch1 最小値</td><td>青オフセット or 編集モードで青をドラッグ</td></tr>
+              <tr><td>赤</td><td>充電で最も高い点</td><td>充電区間(C)の Ch1 最大値</td><td>赤オフセット or 編集モードで赤をドラッグ</td></tr>
+              <tr><td>黄</td><td>放電開始直前</td><td>I→D 遷移の直前サンプル</td><td>黄オフセット or 編集モードで黄をドラッグ</td></tr>
+              <tr><td>緑</td><td>放電開始点</td><td>I→D 遷移の直後サンプル</td><td>緑オフセット or 編集モードで緑をドラッグ</td></tr>
+            </tbody>
+          </table>
+        </section>
+      </div>
 
-  <div class="card">
-    <h2>② パラメータ</h2>
+      <div class="stack">
+        <section class="card chart-card" id="chartCard">
+          <div class="row" style="justify-content:space-between;align-items:flex-start;gap:16px;">
+            <div>
+              <h2>④ 検証グラフ</h2>
+              <div class="legend">
+                <span class="b">青 = 放電終了</span>
+                <span class="r">赤 = 充電ピーク</span>
+                <span class="y">黄 = 放電開始直前</span>
+                <span class="g">緑 = 放電開始</span>
+              </div>
+            </div>
+            <div class="row">
+              <span id="editBadge" class="badge">閲覧モード</span>
+              <button id="editToggle" class="warn">✏️ 編集モード OFF</button>
+              <button id="resetEdits" class="ghost" disabled>↩ 手動調整を戻す</button>
+            </div>
+          </div>
 
-    <div class="param-help">
-      <h3>💡 各パラメータの役割</h3>
-      <dl>
-        <dt>Ch2 状態判定閾値 [V]</dt>
-        <dd>
-          Ch2 の電圧を見て「充電中 / 待機 / 放電中」の 3 状態に分類する境界です。
-          <code>|Ch2| &gt; 閾値</code> なら充電(+) / 放電(-)、それ以下は待機。<br>
-          <b style="color:#d84315">通常は 0.1 のままで OK。</b>
-          Ch2=±0.2V 信号なので 0.1 が最適値です。
-        </dd>
+          <div class="toolbar">
+            <button class="ghost" data-view="first3">先頭3</button>
+            <button class="ghost" data-view="first5">先頭5</button>
+            <button class="ghost" data-view="all">全体</button>
+            <label style="margin:0">From</label><input id="fromCycle" type="number" min="1" step="1" value="1" />
+            <label style="margin:0">To</label><input id="toCycle" type="number" min="1" step="1" value="3" />
+            <button id="applyRange" class="ghost">範囲適用</button>
+          </div>
 
-        <dt>ヘッダスキップ行数</dt>
-        <dd>
-          CSV 先頭の見出し行数。T&D Graph 標準なら <b>3 行</b>。<br>
-          <b style="color:#d84315">T&D Graph の出力なら 3 のままで OK。</b>
-        </dd>
-      </dl>
+          <div class="summary">
+            <div class="metric"><span class="sub">サイクル数</span><b id="metricCycles">-</b></div>
+            <div class="metric"><span class="sub">表示範囲</span><b id="metricView">-</b></div>
+            <div class="metric"><span class="sub">サンプリング間隔</span><b id="metricStep">-</b></div>
+            <div class="metric"><span class="sub">手動調整済</span><b id="metricEdited">0</b></div>
+          </div>
 
-      <div class="tip">
-        📌 <b>検出ロジック (電圧変化ベース)</b>：各サイクルで<br>
-        🔵 <b>青</b> = 放電期間 (Ch2&lt;-閾値) の <b>Ch1 最小値</b> の点<br>
-        🔴 <b>赤</b> = 充電期間 (Ch2&gt;+閾値) の <b>Ch1 最大値</b> の点<br>
-        🟡 <b>黄</b> = Ch2 が 0→-0.2V に切り替わる <b>1 ステップ前</b><br>
-        🟢 <b>緑</b> = Ch2 が 0→-0.2V に切り替わる <b>最初の点</b>
+          <div class="chart-wrap" id="wrap1">
+            <canvas id="chart1"></canvas>
+            <div id="overlay1" class="chart-overlay"></div>
+          </div>
+          <div class="chart-wrap small" id="wrap2">
+            <canvas id="chart2"></canvas>
+            <div id="overlay2" class="chart-overlay"></div>
+          </div>
+
+          <div class="note" style="margin-top:12px">
+            <b>重要:</b> 丸と縦線は同じサンプル点から描画しています。もし丸が縦線とずれて見える場合は表示バグなので、そのままにはしません。今回の版では描画方式を統一して修正しています。<br>
+            編集モードでは <b>青 / 赤 / 黄 / 緑 を独立して移動</b> できます。<b>緑を動かしても黄色は動きません。</b>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>⑤ 抽出結果</h2>
+          <div class="table-wrap">
+            <table id="resultTable">
+              <thead>
+                <tr>
+                  <th>A</th><th>B 青</th><th>C 赤</th><th>D 黄</th><th>E 緑 Ch1</th><th>F 緑 Ch2</th>
+                  <th>G 青時刻</th><th>H 赤時刻</th><th>I 黄時刻</th><th>J 緑時刻</th><th>K 手動調整</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
       </div>
     </div>
-
-    <div class="adjust-guide">
-      <b>🎯 丸の位置(取得箇所)を動かしたい場合</b>
-      <table>
-        <tr>
-          <td><b>青/赤 を左右に動かしたい</b></td>
-          <td>最小/最大値の点で自動決定されるため、パラメータでは動かせません。
-              <b>検証グラフで [✏️ 編集モード] を ON にして縦線をドラッグ</b>してください。</td>
-        </tr>
-        <tr>
-          <td><b>黄 を動かしたい</b></td>
-          <td>緑の縦線をドラッグ → 黄は連動して緑の 1 ステップ前に移動します。</td>
-        </tr>
-        <tr>
-          <td><b>緑 を動かしたい</b></td>
-          <td>緑の縦線をドラッグ → その位置が新しい放電開始点になります。</td>
-        </tr>
-        <tr>
-          <td><b>閾値で調整</b></td>
-          <td>閾値を<b>小さく</b>→充放電期間が広く認識 ／ <b>大きく</b>→狭く認識</td>
-        </tr>
-      </table>
-    </div>
-
-    <div class="params">
-      <label>Ch2 状態判定閾値 [V]
-        <input type="number" id="thr" value="0.1" step="0.01">
-        <span class="hint">デフォルト 0.1</span>
-      </label>
-      <label>ヘッダスキップ行数
-        <input type="number" id="skip" value="3" step="1">
-        <span class="hint">T&D Graph標準 = 3</span>
-      </label>
-    </div>
-    <button class="btn" id="runBtn" disabled>▶ 解析実行</button>
   </div>
-
-  <div class="card hide" id="logCard">
-    <h2>処理ログ</h2>
-    <div id="log"></div>
-  </div>
-
-  <div class="card hide" id="chartCard">
-    <h2>③ 検証グラフ
-      <span class="edit-status off" id="editStatus">閲覧モード</span>
-    </h2>
-
-    <div class="edit-hint">
-      <b>🖱️ 操作方法</b><br>
-      ・<b>閲覧モード</b>: マウスホイールで拡大 / ドラッグで範囲選択拡大 / Shift+ドラッグでパン<br>
-      ・<b>✏️ 編集モード ON</b> にすると、<b>縦線に近い位置でドラッグ</b>して動かせます<br>
-      ・縦線の±15ピクセル以内にカーソルを近づけると <b>↔</b> カーソルに変わります<br>
-      ・ドラッグ可能な縦線: <b>🔵青 / 🔴赤 / 🟢緑</b>（黄は緑に連動して自動移動）<br>
-      ・緑を動かすと黄も連動（緑の1つ前の時刻に自動設定）<br>
-      ・調整した値は結果テーブル／CSV／Excel に自動反映されます
-    </div>
-
-    <div class="chart-controls">
-      <b>表示範囲:</b>
-      <button class="btn small secondary" data-view="all">全体</button>
-      <button class="btn small secondary" data-view="1">Cycle 1 のみ</button>
-      <button class="btn small secondary" data-view="3">先頭 3</button>
-      <button class="btn small secondary" data-view="5">先頭 5</button>
-      <label>
-        サイクル
-        <input type="number" id="rangeFrom" min="1" value="1" style="width:60px;">
-        〜
-        <input type="number" id="rangeTo" min="1" value="3" style="width:60px;">
-      </label>
-      <button class="btn small" id="btnViewRange">▶ 適用</button>
-      <span style="color:#cfd8dc;">|</span>
-      <button class="btn small secondary" id="btnResetZoom">🔄 ズームリセット</button>
-      <span style="color:#cfd8dc;">|</span>
-      <button class="btn small warn" id="btnEditToggle">✏️ 編集モード OFF</button>
-      <button class="btn small secondary" id="btnUndoAll">↩ 全て元に戻す</button>
-    </div>
-
-    <div>
-      <span class="legend-line" style="border-top-color:#2962ff"></span>
-      <span class="legend-dot" style="background:#2962ff"></span>青 放電終了(Ch1最小)
-      <span class="legend-line" style="border-top-color:#d32f2f;margin-left:10px;"></span>
-      <span class="legend-dot" style="background:#d32f2f"></span>赤 充電ピーク(Ch1最大)
-      <span class="legend-line" style="border-top-color:#f9a825;margin-left:10px;"></span>
-      <span class="legend-dot" style="background:#f9a825"></span>黄 放電直前
-      <span class="legend-line" style="border-top-color:#2e7d32;margin-left:10px;"></span>
-      <span class="legend-dot" style="background:#2e7d32"></span>緑 放電開始
-    </div>
-
-    <div class="chart-wrap ch1">
-      <canvas id="chart1"></canvas>
-      <!-- 編集モード時にイベントを受けるオーバーレイ -->
-      <div class="overlay" id="overlay1"></div>
-    </div>
-    <div class="chart-wrap ch2">
-      <canvas id="chart2"></canvas>
-    </div>
-  </div>
-
-  <div class="card hide" id="resultCard">
-    <h2>④ 抽出結果</h2>
-    <div class="summary" id="summary"></div>
-    <div style="margin-top:12px;font-size:.88em;color:#546e7a;">
-      💡 手動調整した行は <span style="background:#fff9c4;padding:2px 8px;">黄色ハイライト</span> + ✏️ で表示されます
-    </div>
-    <button class="btn success" id="dlXlsx">⬇ Excel (.xlsx)</button>
-    <button class="btn success" id="dlCsv">⬇ CSV</button>
-    <div style="max-height:380px;overflow:auto;margin-top:12px;">
-      <table class="result-tbl" id="resultTable"></table>
-    </div>
-  </div>
-
-</main>
-
-<footer>Battery Cycle Extractor v3.2 / 編集モード修正版</footer>
 
 <script>
-'use strict';
+(() => {
+  const COLORS = { blue:'#1f78ff', red:'#e53935', yellow:'#ffb300', green:'#1f9d55', green2:'#00897b' };
+  const state = {
+    rows: [],
+    cycles: [],
+    originalCycles: [],
+    sampleSeconds: null,
+    view: { mode:'first3', from:1, to:3 },
+    charts: { c1:null, c2:null },
+    editMode: false,
+    drag: null,
+  };
 
-// =======================================================================
-// 縦線描画プラグイン
-// =======================================================================
-const verticalLinesPlugin = {
-  id: 'verticalLines',
-  afterDatasetsDraw(chart, args, opts) {
-    if (!opts || !opts.cycles) return;
-    const cycles = opts.cycles;
-    const colors = opts.colors || {};
-    const keys = opts.keys || [];
-    const activeDrag = opts.activeDrag; // {cycleIdx, key} or null
-    const xScale = chart.scales.x;
-    const yScale = chart.scales.y;
-    if (!xScale || !yScale) return;
-    const ctx = chart.ctx;
+  const $ = (id) => document.getElementById(id);
+  const statusEl = $('status');
+  const metricCycles = $('metricCycles');
+  const metricView = $('metricView');
+  const metricStep = $('metricStep');
+  const metricEdited = $('metricEdited');
+  const resultBody = $('resultTable').querySelector('tbody');
+  const chartCard = $('chartCard');
 
-    cycles.forEach((c, ci) => {
-      keys.forEach(key => {
-        const t = c[key + '_time'];
-        if (!t) return;
-        const timeMs = t.getTime ? t.getTime() : t;
-        const x = xScale.getPixelForValue(timeMs);
-        if (x < xScale.left - 1 || x > xScale.right + 1) return;
-        const isActive = activeDrag && activeDrag.cycleIdx === ci && activeDrag.key === key;
-        ctx.save();
-        ctx.strokeStyle = colors[key] || '#000';
-        ctx.lineWidth = isActive ? 3.5 : 1.5;
-        ctx.setLineDash(isActive ? [] : [6, 4]);
-        ctx.globalAlpha = isActive ? 1 : 0.65;
+  function setStatus(html, type='info') {
+    statusEl.innerHTML = html;
+    statusEl.style.background = type === 'error' ? '#fff3f3' : type === 'ok' ? '#eef8f0' : '#fffdf1';
+    statusEl.style.borderColor = type === 'error' ? '#f2b8b5' : type === 'ok' ? '#bfe3c6' : '#f3e4a2';
+  }
+
+  function parseCSV(text, skiprows) {
+    const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(Boolean).slice(skiprows);
+    const rows = [];
+    for (const line of lines) {
+      const cols = line.match(/("(?:[^"]|"")*"|[^,]+)/g) || [];
+      if (cols.length < 4) continue;
+      const vals = cols.map(v => v.replace(/^"|"$/g, '').replace(/""/g, '"'));
+      const t = new Date(vals[0]);
+      const ch1 = Number(vals[2]);
+      const ch2 = Number(vals[3]);
+      if (!Number.isFinite(t.getTime()) || !Number.isFinite(ch1) || !Number.isFinite(ch2)) continue;
+      rows.push({ idx: rows.length, time: t, x: t.getTime(), ch1, ch2 });
+    }
+    return rows;
+  }
+
+  function median(arr) {
+    if (!arr.length) return null;
+    const a = [...arr].sort((x,y)=>x-y);
+    const m = Math.floor(a.length / 2);
+    return a.length % 2 ? a[m] : (a[m-1] + a[m]) / 2;
+  }
+
+  function classify(ch2, thr) {
+    if (ch2 > thr) return 'C';
+    if (ch2 < -thr) return 'D';
+    return 'I';
+  }
+
+  function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
+
+  function detectCycles(rows, params) {
+    const states = rows.map(r => classify(r.ch2, params.ch2Threshold));
+    const segments = [];
+    let s = 0;
+    for (let i=1;i<rows.length;i++) {
+      if (states[i] !== states[i-1]) { segments.push({ start:s, end:i-1, state:states[i-1] }); s = i; }
+    }
+    segments.push({ start:s, end:rows.length-1, state:states[rows.length-1] });
+
+    const blueIdxs = [], redIdxs = [], yellowIdxs = [], greenIdxs = [];
+
+    for (const seg of segments) {
+      if (seg.state === 'D') {
+        let best = seg.start;
+        for (let i=seg.start+1;i<=seg.end;i++) if (rows[i].ch1 < rows[best].ch1) best = i;
+        blueIdxs.push(clamp(best + params.blueShift, seg.start, seg.end));
+      }
+      if (seg.state === 'C') {
+        let best = seg.start;
+        for (let i=seg.start+1;i<=seg.end;i++) if (rows[i].ch1 > rows[best].ch1) best = i;
+        redIdxs.push(clamp(best + params.redShift, seg.start, seg.end));
+      }
+    }
+
+    for (let i=0;i<segments.length-1;i++) {
+      const a = segments[i], b = segments[i+1];
+      if (a.state === 'I' && b.state === 'D') {
+        yellowIdxs.push(clamp(a.end + params.yellowShift, a.start, a.end));
+        greenIdxs.push(clamp(b.start + params.greenShift, b.start, b.end));
+      }
+    }
+
+    const cycles = [];
+    let ri=0, yi=0, gi=0;
+    for (const blueIdx of blueIdxs) {
+      const blueX = rows[blueIdx].x;
+      while (ri < redIdxs.length && rows[redIdxs[ri]].x <= blueX) ri++;
+      if (ri >= redIdxs.length) break;
+      const redIdx = redIdxs[ri];
+      while (yi < yellowIdxs.length && rows[yellowIdxs[yi]].x <= rows[redIdx].x) yi++;
+      while (gi < greenIdxs.length && rows[greenIdxs[gi]].x <= rows[redIdx].x) gi++;
+      if (yi >= yellowIdxs.length || gi >= greenIdxs.length) break;
+      const yellowIdx = yellowIdxs[yi], greenIdx = greenIdxs[gi];
+      cycles.push({
+        cycleNo: cycles.length + 1,
+        blueIdx, redIdx, yellowIdx, greenIdx,
+        edited: false,
+      });
+      ri++; yi++; gi++;
+    }
+    return cycles;
+  }
+
+  function rowAt(idx) { return state.rows[idx]; }
+  function fmtNum(v) { return Number(v).toFixed(5); }
+  function fmtTime(d) {
+    const pad = n => String(n).padStart(2,'0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+
+  function cycleToObject(c) {
+    const b = rowAt(c.blueIdx), r = rowAt(c.redIdx), y = rowAt(c.yellowIdx), g = rowAt(c.greenIdx);
+    return {
+      cycleNo: c.cycleNo,
+      B: b.ch1, C: r.ch1, D: y.ch1, E: g.ch1, F: g.ch2,
+      G: fmtTime(b.time), H: fmtTime(r.time), I: fmtTime(y.time), J: fmtTime(g.time),
+      edited: c.edited ? '調整済' : ''
+    };
+  }
+
+  function cloneCycles(cycles) { return cycles.map(c => ({...c})); }
+
+  function buildTable() {
+    resultBody.innerHTML = '';
+    let editedCount = 0;
+    for (const c of state.cycles) {
+      const o = cycleToObject(c);
+      const tr = document.createElement('tr');
+      if (c.edited) { tr.classList.add('edited'); editedCount++; }
+      tr.innerHTML = `
+        <td>${o.cycleNo}</td>
+        <td>${fmtNum(o.B)}</td>
+        <td>${fmtNum(o.C)}</td>
+        <td>${fmtNum(o.D)}</td>
+        <td>${fmtNum(o.E)}</td>
+        <td>${fmtNum(o.F)}</td>
+        <td>${o.G}</td>
+        <td>${o.H}</td>
+        <td>${o.I}</td>
+        <td>${o.J}</td>
+        <td>${o.edited}</td>`;
+      resultBody.appendChild(tr);
+    }
+    metricEdited.textContent = String(editedCount);
+    $('resetEdits').disabled = editedCount === 0;
+    $('downloadBtn').disabled = state.cycles.length === 0;
+  }
+
+  function exportCsv() {
+    const header = ['A_サイクル番号','B_青_放電終了_Ch1(V)','C_赤_充電ピーク_Ch1(V)','D_黄_放電開始直前_Ch1(V)','E_緑_放電開始_Ch1(V)','F_緑_放電開始_Ch2(V)','G_青_時刻(放電終了)','H_赤_時刻(充電ピーク)','I_黄_時刻(放電直前)','J_緑_時刻(放電開始)','K_手動調整フラグ'];
+    const lines = [header.join(',')];
+    for (const c of state.cycles) {
+      const o = cycleToObject(c);
+      lines.push([
+        o.cycleNo, fmtNum(o.B), fmtNum(o.C), fmtNum(o.D), fmtNum(o.E), fmtNum(o.F),
+        o.G, o.H, o.I, o.J, o.edited
+      ].map(v => `"${String(v)}"`).join(','));
+    }
+    const blob = new Blob(['\uFEFF' + lines.join('\n')], { type:'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'battery_cycles.csv';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function getVisibleCycles() {
+    if (!state.cycles.length) return [];
+    let from = 1, to = Math.min(3, state.cycles.length);
+    if (state.view.mode === 'first5') to = Math.min(5, state.cycles.length);
+    else if (state.view.mode === 'all') to = state.cycles.length;
+    else if (state.view.mode === 'custom') {
+      from = clamp(Number($('fromCycle').value || 1), 1, state.cycles.length);
+      to = clamp(Number($('toCycle').value || from), from, state.cycles.length);
+    }
+    metricView.textContent = `${from} - ${to}`;
+    return state.cycles.slice(from - 1, to);
+  }
+
+  function getViewBounds(vis) {
+    if (!vis.length) return null;
+    let minIdx = Infinity, maxIdx = -Infinity;
+    for (const c of vis) {
+      minIdx = Math.min(minIdx, c.blueIdx, c.redIdx, c.yellowIdx, c.greenIdx);
+      maxIdx = Math.max(maxIdx, c.blueIdx, c.redIdx, c.yellowIdx, c.greenIdx);
+    }
+    const margin = Math.max(60, Math.round((maxIdx - minIdx) * 0.08));
+    return { start: clamp(minIdx - margin, 0, state.rows.length - 1), end: clamp(maxIdx + margin, 0, state.rows.length - 1) };
+  }
+
+  function downsample(rows, maxPoints=5000) {
+    if (rows.length <= maxPoints) return rows;
+    const step = Math.ceil(rows.length / maxPoints);
+    const out = [];
+    for (let i=0;i<rows.length;i+=step) out.push(rows[i]);
+    if (out[out.length-1] !== rows[rows.length-1]) out.push(rows[rows.length-1]);
+    return out;
+  }
+
+  const verticalLinePlugin = {
+    id: 'verticalLinePlugin',
+    afterDatasetsDraw(chart, args, pluginOptions) {
+      const lines = pluginOptions?.lines || [];
+      if (!lines.length) return;
+      const {ctx, chartArea, scales} = chart;
+      const xScale = scales.x;
+      ctx.save();
+      for (const ln of lines) {
+        const x = xScale.getPixelForValue(ln.x);
         ctx.beginPath();
-        ctx.moveTo(x, yScale.top);
-        ctx.lineTo(x, yScale.bottom);
+        ctx.strokeStyle = ln.color;
+        ctx.lineWidth = ln.active ? 3.2 : 1.6;
+        ctx.setLineDash(ln.active ? [] : [6, 4]);
+        ctx.moveTo(x, chartArea.top);
+        ctx.lineTo(x, chartArea.bottom);
         ctx.stroke();
-        // ラベル
         ctx.setLineDash([]);
-        ctx.globalAlpha = 1;
-        ctx.fillStyle = colors[key] || '#000';
-        ctx.font = isActive ? 'bold 12px sans-serif' : 'bold 10px sans-serif';
-        ctx.textAlign = 'center';
-        const letter = key[0].toUpperCase();
-        ctx.fillText(letter + c.cycle, x, yScale.top + 10);
-        ctx.restore();
-      });
-    });
-  }
-};
-
-document.addEventListener('DOMContentLoaded', () => {
-  if (window.Chart) {
-    Chart.register(verticalLinesPlugin);
-    console.log('verticalLinesPlugin registered');
-  }
-});
-
-// =======================================================================
-// コアロジック (電圧変化ベース)
-// =======================================================================
-function classifyState(ch2, thr) {
-  if (ch2 >  thr) return 'C';
-  if (ch2 < -thr) return 'D';
-  return 'I';
-}
-
-function parseCsv(text, skipRows) {
-  const lines = text.split(/\r?\n/);
-  const rows = [];
-  for (let i = skipRows; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
-    const cells = line.split(',').map(c => c.replace(/^"|"$/g, '').trim());
-    if (cells.length < 4) continue;
-    const dt = new Date(cells[0].replace(' ', 'T'));
-    const ch1 = parseFloat(cells[2]);
-    const ch2 = parseFloat(cells[3]);
-    if (isNaN(dt.getTime()) || isNaN(ch1) || isNaN(ch2)) continue;
-    rows.push({ datetime: dt, ch1: ch1, ch2: ch2, state: null });
-  }
-  return rows;
-}
-
-function extractCycles(rows, thr) {
-  rows.forEach(r => r.state = classifyState(r.ch2, thr));
-  const events = [];
-  for (let i = 0; i < rows.length; i++) {
-    const prev = i > 0 ? rows[i-1].state : null;
-    if (rows[i].state !== prev) {
-      events.push({ idx: i, from: prev, to: rows[i].state });
-    }
-  }
-
-  const cycles = [];
-  for (let k = 0; k < events.length; k++) {
-    const ev = events[k];
-    if (ev.from !== 'D' || ev.to !== 'I') continue;
-
-    let dStart = null;
-    for (let j = k - 1; j >= 0; j--) {
-      if (events[j].from === 'I' && events[j].to === 'D') { dStart = events[j].idx; break; }
-    }
-    if (dStart === null) continue;
-    const dEnd = ev.idx;
-
-    let blueIdx = dStart, blueMin = Infinity;
-    for (let i = dStart; i < dEnd; i++) {
-      if (rows[i].ch1 < blueMin) { blueMin = rows[i].ch1; blueIdx = i; }
-    }
-
-    let cStartEv = null;
-    for (let j = k + 1; j < events.length; j++) {
-      if (events[j].from === 'I' && events[j].to === 'C') { cStartEv = events[j]; break; }
-    }
-    if (!cStartEv) continue;
-    let cEndEv = null;
-    for (let j = k + 1; j < events.length; j++) {
-      if (events[j].from === 'C' && events[j].to === 'I' && events[j].idx > cStartEv.idx) {
-        cEndEv = events[j]; break;
+        ctx.fillStyle = ln.color;
+        ctx.font = 'bold 12px sans-serif';
+        ctx.fillText(ln.label, x + 4, chartArea.top + 14 + (ln.labelOffset || 0));
       }
-    }
-    if (!cEndEv) continue;
-
-    let redIdx = cStartEv.idx, redMax = -Infinity;
-    for (let i = cStartEv.idx; i < cEndEv.idx; i++) {
-      if (rows[i].ch1 > redMax) { redMax = rows[i].ch1; redIdx = i; }
-    }
-
-    let dStartNextEv = null;
-    for (let j = k + 1; j < events.length; j++) {
-      if (events[j].from === 'I' && events[j].to === 'D' && events[j].idx > cEndEv.idx) {
-        dStartNextEv = events[j]; break;
-      }
-    }
-    if (!dStartNextEv) continue;
-
-    const yellowIdx = Math.max(dStartNextEv.idx - 1, 0);
-    const greenIdx = dStartNextEv.idx;
-
-    cycles.push({
-      cycle:       cycles.length + 1,
-      blue_idx:    blueIdx,
-      blue_time:   rows[blueIdx].datetime,
-      blue_ch1:    rows[blueIdx].ch1,
-      red_idx:     redIdx,
-      red_time:    rows[redIdx].datetime,
-      red_ch1:     rows[redIdx].ch1,
-      yellow_idx:  yellowIdx,
-      yellow_time: rows[yellowIdx].datetime,
-      yellow_ch1:  rows[yellowIdx].ch1,
-      green_idx:   greenIdx,
-      green_time:  rows[greenIdx].datetime,
-      green_ch1:   rows[greenIdx].ch1,
-      green_ch2:   rows[greenIdx].ch2,
-      edited:      false,
-    });
-  }
-  return cycles;
-}
-
-// =======================================================================
-// グローバル状態
-// =======================================================================
-const $ = id => document.getElementById(id);
-let currentFile = null, currentRows = null;
-let originalCycles = null;
-let currentCycles = null;
-let chart1 = null, chart2 = null;
-let editMode = false;
-let dragState = null;  // {cycleIdx, key, startX, startTime}
-const HIT_PX = 15;
-
-function log(msg) {
-  $('logCard').classList.remove('hide');
-  $('log').textContent += msg + '\n';
-  $('log').scrollTop = $('log').scrollHeight;
-  console.log('[log]', msg);
-}
-
-$('file').addEventListener('change', e => {
-  if (e.target.files.length) setFile(e.target.files[0]);
-});
-$('dropZone').addEventListener('dragover', e => {
-  e.preventDefault(); $('dropZone').classList.add('dragover');
-});
-$('dropZone').addEventListener('dragleave', () => $('dropZone').classList.remove('dragover'));
-$('dropZone').addEventListener('drop', e => {
-  e.preventDefault(); $('dropZone').classList.remove('dragover');
-  if (e.dataTransfer.files.length) setFile(e.dataTransfer.files[0]);
-});
-
-function setFile(f) {
-  currentFile = f;
-  $('fileName').textContent = '選択中: ' + f.name + ' (' + (f.size/1024/1024).toFixed(2) + ' MB)';
-  $('runBtn').disabled = false;
-}
-
-$('runBtn').addEventListener('click', async () => {
-  if (!currentFile) return;
-  $('log').textContent = '';
-  log('読込中: ' + currentFile.name);
-  const t0 = performance.now();
-  try {
-    const text = await currentFile.text();
-    const skip = parseInt($('skip').value, 10);
-    const rows = parseCsv(text, skip);
-    log(rows.length.toLocaleString() + ' 行を解析');
-    if (rows.length === 0) { log('有効データなし'); return; }
-
-    const thr = parseFloat($('thr').value);
-    const cycles = extractCycles(rows, thr);
-    log('検出サイクル数: ' + cycles.length);
-    log('処理時間: ' + ((performance.now()-t0)/1000).toFixed(2) + ' 秒');
-
-    currentRows = rows;
-    originalCycles = cycles.map(c => Object.assign({}, c));
-    currentCycles = cycles;
-
-    $('rangeFrom').max = cycles.length; $('rangeTo').max = cycles.length;
-    $('rangeFrom').value = 1;
-    $('rangeTo').value = Math.min(3, cycles.length);
-
-    $('chartCard').classList.remove('hide');
-    $('resultCard').classList.remove('hide');
-
-    renderResult();
-
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        renderChart(1, Math.min(3, cycles.length));
-      });
-    });
-  } catch (err) {
-    console.error(err);
-    log('エラー: ' + err.message);
-  }
-});
-
-function renderResult() {
-  const n = currentCycles.length;
-  const avg = k => n ? currentCycles.reduce((s,c)=>s+c[k],0)/n : 0;
-  const nEdited = currentCycles.filter(c => c.edited).length;
-
-  $('summary').innerHTML =
-    '<div class="stat"><div class="v">'+n+'</div><div class="l">検出サイクル数</div></div>' +
-    '<div class="stat"><div class="v">'+avg('blue_ch1').toFixed(3)+'V</div><div class="l">平均 青(放電終了)</div></div>' +
-    '<div class="stat"><div class="v">'+avg('red_ch1').toFixed(3)+'V</div><div class="l">平均 赤(充電ピーク)</div></div>' +
-    '<div class="stat"><div class="v">'+avg('yellow_ch1').toFixed(3)+'V</div><div class="l">平均 黄</div></div>' +
-    '<div class="stat"><div class="v">'+avg('green_ch1').toFixed(3)+'V</div><div class="l">平均 緑 Ch1</div></div>' +
-    '<div class="stat"><div class="v" style="color:#f57c00;">'+nEdited+'</div><div class="l">手動調整済</div></div>';
-
-  let html = '<thead><tr>' +
-    '<th>A:#</th>' +
-    '<th>B:青Ch1</th><th>C:赤Ch1</th><th>D:黄Ch1</th><th>E:緑Ch1</th><th>F:緑Ch2</th>' +
-    '<th>G:青時刻</th><th>H:赤時刻</th><th>I:黄時刻</th><th>J:緑時刻</th>' +
-    '</tr></thead><tbody>';
-  currentCycles.forEach(c => {
-    html += '<tr class="' + (c.edited ? 'edited' : '') + '">' +
-      '<td>' + c.cycle + (c.edited?' ✏️':'') + '</td>' +
-      '<td>' + c.blue_ch1.toFixed(5) + '</td>' +
-      '<td>' + c.red_ch1.toFixed(5) + '</td>' +
-      '<td>' + c.yellow_ch1.toFixed(5) + '</td>' +
-      '<td>' + c.green_ch1.toFixed(5) + '</td>' +
-      '<td>' + c.green_ch2.toFixed(5) + '</td>' +
-      '<td>' + fmtDate(c.blue_time) + '</td>' +
-      '<td>' + fmtDate(c.red_time) + '</td>' +
-      '<td>' + fmtDate(c.yellow_time) + '</td>' +
-      '<td>' + fmtDate(c.green_time) + '</td></tr>';
-  });
-  html += '</tbody>';
-  $('resultTable').innerHTML = html;
-}
-
-function fmtDate(d){
-  if (!(d instanceof Date)) d = new Date(d);
-  const p = n => String(n).padStart(2,'0');
-  return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate()) + ' '
-       + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
-}
-
-// =======================================================================
-// グラフ描画
-// =======================================================================
-const COLORS = { blue:'#2962ff', red:'#d32f2f', yellow:'#f9a825', green:'#2e7d32' };
-
-function renderChart(cycleFrom, cycleTo) {
-  if (!currentRows || !currentCycles || !currentCycles.length) return;
-
-  let tMin = null, tMax = null;
-  let visibleCycles = currentCycles;
-
-  if (cycleFrom != null && cycleTo != null) {
-    cycleFrom = Math.max(1, Math.min(currentCycles.length, cycleFrom));
-    cycleTo   = Math.max(cycleFrom, Math.min(currentCycles.length, cycleTo));
-    visibleCycles = currentCycles.slice(cycleFrom - 1, cycleTo);
-    if (visibleCycles.length > 0) {
-      const pad = 30 * 60 * 1000;
-      tMin = new Date(visibleCycles[0].blue_time.getTime() - pad);
-      tMax = new Date(visibleCycles[visibleCycles.length - 1].green_time.getTime() + pad * 3);
-    }
-  }
-
-  let visibleRows = currentRows;
-  if (tMin && tMax) {
-    visibleRows = currentRows.filter(r => r.datetime >= tMin && r.datetime <= tMax);
-  }
-  const maxPoints = 4000;
-  const stepSize = Math.max(1, Math.floor(visibleRows.length / maxPoints));
-  const sparse = visibleRows.filter((_,i)=> i % stepSize === 0);
-
-  const ch1Data = sparse.map(r => ({x: r.datetime.getTime(), y: r.ch1}));
-  const ch2Data = sparse.map(r => ({x: r.datetime.getTime(), y: r.ch2}));
-
-  const mkMark = (pts, color, label) => ({
-    label: label, type: 'scatter', data: pts,
-    backgroundColor: 'transparent', borderColor: color, borderWidth: 2.5,
-    pointRadius: 8, pointHoverRadius: 10, pointStyle: 'circle', showLine: false,
-  });
-
-  const bluePts   = visibleCycles.map(c => ({x: c.blue_time.getTime(),   y: c.blue_ch1,   _cycle: c.cycle}));
-  const redPts    = visibleCycles.map(c => ({x: c.red_time.getTime(),    y: c.red_ch1,    _cycle: c.cycle}));
-  const yellowPts = visibleCycles.map(c => ({x: c.yellow_time.getTime(), y: c.yellow_ch1, _cycle: c.cycle}));
-  const greenPts1 = visibleCycles.map(c => ({x: c.green_time.getTime(),  y: c.green_ch1,  _cycle: c.cycle}));
-  const greenPts2 = visibleCycles.map(c => ({x: c.green_time.getTime(),  y: c.green_ch2,  _cycle: c.cycle}));
-
-  const xScale = {
-    type: 'time',
-    time: { tooltipFormat: 'yyyy-MM-dd HH:mm:ss' },
-    ticks: { maxRotation: 0, autoSkip: true, color: '#546e7a' },
-    grid: { color: 'rgba(0,0,0,0.05)' }
-  };
-  if (tMin && tMax) { xScale.min = tMin.getTime(); xScale.max = tMax.getTime(); }
-
-  // 編集モード時は zoom プラグインの全機能を無効化 (wheel, drag, pan 全部)
-  const zoomOpts = editMode ? {
-    zoom: { wheel: { enabled: false }, drag: { enabled: false }, pinch: { enabled: false }, mode: 'x' },
-    pan:  { enabled: false }
-  } : {
-    pan:  { enabled: true, mode: 'x', modifierKey: 'shift' },
-    zoom: {
-      wheel: { enabled: true },
-      drag:  { enabled: true, backgroundColor: 'rgba(102,126,234,0.15)' },
-      mode: 'x',
+      ctx.restore();
     }
   };
+  Chart.register(verticalLinePlugin);
 
-  if (chart1) { chart1.destroy(); chart1 = null; }
-  if (chart2) { chart2.destroy(); chart2 = null; }
-
-  chart1 = new Chart($('chart1'), {
-    type: 'line',
-    data: { datasets: [
-      { label: 'Ch1', data: ch1Data, borderColor: '#e53935',
-        borderWidth: 1.2, pointRadius: 0, tension: 0, parsing: false },
-      mkMark(bluePts,   COLORS.blue,   '青 放電終了'),
-      mkMark(redPts,    COLORS.red,    '赤 充電ピーク'),
-      mkMark(yellowPts, COLORS.yellow, '黄 放電直前'),
-      mkMark(greenPts1, COLORS.green,  '緑 放電開始'),
-    ]},
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      animation: false, parsing: false,
-      // 編集モード時は Chart.js 本体のイベントも無効化
-      events: editMode ? [] : ['mousemove', 'mouseout', 'click', 'touchstart', 'touchmove'],
-      scales: { x: xScale, y: { title: { display: true, text: 'Ch1 (V)' } } },
-      plugins: {
-        legend: { position: 'bottom' },
-        zoom: zoomOpts,
-        verticalLines: { cycles: visibleCycles, colors: COLORS, keys: ['blue','red','yellow','green'] },
-        tooltip: {
-          enabled: !editMode,
-          callbacks: {
-            label: function(ctx) {
-              const p = ctx.raw;
-              const cyc = p._cycle ? ' [Cycle ' + p._cycle + ']' : '';
-              return ctx.dataset.label + cyc + ': ' + p.y.toFixed(5) + ' V';
-            }
-          }
-        }
+  function markerDatasets(vis, chartKind) {
+    const ds = [];
+    const pts = { blue:[], red:[], yellow:[], green:[] };
+    for (const c of vis) {
+      const b = rowAt(c.blueIdx), r = rowAt(c.redIdx), y = rowAt(c.yellowIdx), g = rowAt(c.greenIdx);
+      if (chartKind === 'ch1') {
+        pts.blue.push({ x:b.x, y:b.ch1, label:`B${c.cycleNo}` });
+        pts.red.push({ x:r.x, y:r.ch1, label:`R${c.cycleNo}` });
+        pts.yellow.push({ x:y.x, y:y.ch1, label:`Y${c.cycleNo}` });
+        pts.green.push({ x:g.x, y:g.ch1, label:`G${c.cycleNo}` });
+      } else {
+        pts.green.push({ x:g.x, y:g.ch2, label:`G${c.cycleNo}` });
       }
     }
-  });
-
-  chart2 = new Chart($('chart2'), {
-    type: 'line',
-    data: { datasets: [
-      { label: 'Ch2', data: ch2Data, borderColor: '#b8a000',
-        borderWidth: 1.2, pointRadius: 0, tension: 0, parsing: false },
-      mkMark(greenPts2, COLORS.green, '緑 Ch2'),
-    ]},
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      animation: false, parsing: false,
-      events: editMode ? [] : ['mousemove', 'mouseout', 'click'],
-      scales: { x: xScale, y: { title: { display: true, text: 'Ch2 (V)' } } },
-      plugins: {
-        legend: { position: 'bottom' },
-        zoom: zoomOpts,
-        verticalLines: { cycles: visibleCycles, colors: COLORS, keys: ['green'] },
-      }
+    const push = (key,color,data,size=5) => ds.push({ type:'scatter', label:key, data, pointRadius:size, pointHoverRadius:size+1, showLine:false, borderColor:color, backgroundColor:color, pointStyle:'circle' });
+    if (chartKind === 'ch1') {
+      push('blue', COLORS.blue, pts.blue, 5);
+      push('red', COLORS.red, pts.red, 5);
+      push('yellow', COLORS.yellow, pts.yellow, 5);
+      push('green', COLORS.green, pts.green, 5.5);
+    } else {
+      push('green', COLORS.green2, pts.green, 5.5);
     }
-  });
-
-  console.log('charts rendered, editMode =', editMode);
-}
-
-// =======================================================================
-// オーバーレイによるドラッグ処理 (Chart.js のイベントを回避)
-// オーバーレイは編集モードON時のみ pointer-events:auto になる
-// =======================================================================
-function initOverlay() {
-  const overlay = $('overlay1');
-  overlay.addEventListener('mousedown', onOverlayDown);
-  overlay.addEventListener('mousemove', onOverlayMove);
-  overlay.addEventListener('mouseup',   onOverlayUp);
-  overlay.addEventListener('mouseleave', onOverlayUp);
-  // touch対応
-  overlay.addEventListener('touchstart', onOverlayTouchStart, {passive: false});
-  overlay.addEventListener('touchmove',  onOverlayTouchMove,  {passive: false});
-  overlay.addEventListener('touchend',   onOverlayTouchEnd);
-}
-
-function overlayToCanvasPos(e) {
-  // オーバーレイは canvas の上 (top:8,left:8) にあるため補正
-  const canvas = $('chart1');
-  const canvasRect = canvas.getBoundingClientRect();
-  let clientX, clientY;
-  if (e.touches && e.touches[0]) {
-    clientX = e.touches[0].clientX;
-    clientY = e.touches[0].clientY;
-  } else {
-    clientX = e.clientX;
-    clientY = e.clientY;
+    return ds;
   }
-  return { x: clientX - canvasRect.left, y: clientY - canvasRect.top };
-}
 
-function findNearestLine(canvasX) {
-  if (!chart1) return null;
-  const xScale = chart1.scales.x;
-  if (canvasX < xScale.left - 5 || canvasX > xScale.right + 5) return null;
+  function markerLines(vis, activeKey, activeCycle) {
+    const lines = [];
+    for (const c of vis) {
+      const b = rowAt(c.blueIdx), r = rowAt(c.redIdx), y = rowAt(c.yellowIdx), g = rowAt(c.greenIdx);
+      lines.push({ x:b.x, color:COLORS.blue, label:`B${c.cycleNo}`, active: activeKey==='blue' && activeCycle===c.cycleNo });
+      lines.push({ x:r.x, color:COLORS.red, label:`R${c.cycleNo}`, labelOffset: 14, active: activeKey==='red' && activeCycle===c.cycleNo });
+      lines.push({ x:y.x, color:COLORS.yellow, label:`Y${c.cycleNo}`, labelOffset: 28, active: activeKey==='yellow' && activeCycle===c.cycleNo });
+      lines.push({ x:g.x, color:COLORS.green, label:`G${c.cycleNo}`, labelOffset: 42, active: activeKey==='green' && activeCycle===c.cycleNo });
+    }
+    return lines;
+  }
 
-  const visibleCycles = chart1.options.plugins.verticalLines.cycles;
-  // 黄は緑と連動して動くため、直接ドラッグ対象から除外。緑だけが狙える対象。
-  const draggableKeys = ['blue', 'red', 'green'];
-  let best = null, bestDist = Infinity;
-  visibleCycles.forEach(c => {
-    const realIdx = currentCycles.findIndex(cc => cc.cycle === c.cycle);
-    if (realIdx < 0) return;
-    draggableKeys.forEach(key => {
-      const t = currentCycles[realIdx][key + '_time'].getTime();
-      if (t < xScale.min || t > xScale.max) return;
-      const x = xScale.getPixelForValue(t);
-      const dist = Math.abs(x - canvasX);
-      if (dist < HIT_PX && dist < bestDist) {
-        bestDist = dist;
-        best = { cycleIdx: realIdx, key: key };
+  function buildMainSeries(rows) {
+    return rows.map(r => ({ x:r.x, y:r.ch1 }));
+  }
+  function buildSecondSeries(rows) {
+    return rows.map(r => ({ x:r.x, y:r.ch2 }));
+  }
+
+  function destroyCharts() {
+    if (state.charts.c1) state.charts.c1.destroy();
+    if (state.charts.c2) state.charts.c2.destroy();
+    state.charts.c1 = null; state.charts.c2 = null;
+  }
+
+  function renderCharts(active = null) {
+    destroyCharts();
+    const vis = getVisibleCycles();
+    const bounds = getViewBounds(vis);
+    if (!bounds) return;
+    const slice = state.rows.slice(bounds.start, bounds.end + 1);
+    const sampled = downsample(slice, 5500);
+    const activeKey = active?.key || null;
+    const activeCycle = active?.cycleNo || null;
+
+    const common = {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      parsing: false,
+      interaction: { mode: 'nearest', intersect: false },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { title: (items)=>fmtTime(new Date(items[0].parsed.x)) } } },
+      scales: {
+        x: { type:'time', time:{ tooltipFormat:'yyyy-MM-dd HH:mm:ss' }, ticks:{ maxRotation:0, autoSkip:true } },
+      }
+    };
+
+    state.charts.c1 = new Chart($('chart1').getContext('2d'), {
+      type: 'line',
+      data: {
+        datasets: [
+          { label:'Ch1', data: buildMainSeries(sampled), borderColor:'#406a8f', borderWidth:1.1, pointRadius:0, tension:0 },
+          ...markerDatasets(vis, 'ch1')
+        ]
+      },
+      options: {
+        ...common,
+        scales: { ...common.scales, y: { title:{ display:true, text:'Ch1 [V]' } } },
+        plugins: { ...common.plugins, verticalLinePlugin: { lines: markerLines(vis, activeKey, activeCycle) } }
       }
     });
-  });
-  return best;
-}
 
-function onOverlayDown(e) {
-  if (!editMode || !chart1) return;
-  e.preventDefault();
-  e.stopPropagation();
-  const pos = overlayToCanvasPos(e);
-  const hit = findNearestLine(pos.x);
-  log('mousedown at x=' + pos.x.toFixed(1) + ' hit=' + (hit ? JSON.stringify(hit) : 'none'));
-  if (hit) {
-    dragState = hit;
-    document.body.classList.add('dragging');
-    // プラグインに知らせて当該縦線をハイライト
-    updateActiveDragHighlight();
-  }
-}
+    state.charts.c2 = new Chart($('chart2').getContext('2d'), {
+      type: 'line',
+      data: {
+        datasets: [
+          { label:'Ch2', data: buildSecondSeries(sampled), borderColor:'#7b8c9a', borderWidth:1.1, pointRadius:0, tension:0 },
+          ...markerDatasets(vis, 'ch2')
+        ]
+      },
+      options: {
+        ...common,
+        scales: { ...common.scales, y: { title:{ display:true, text:'Ch2 [V]' } } },
+        plugins: { ...common.plugins, verticalLinePlugin: { lines: markerLines(vis, activeKey, activeCycle) } }
+      }
+    });
 
-function onOverlayMove(e) {
-  if (!editMode || !chart1) return;
-  const pos = overlayToCanvasPos(e);
-  if (dragState) {
-    e.preventDefault();
-    handleDrag(pos.x);
-  } else {
-    const hit = findNearestLine(pos.x);
-    e.target.style.cursor = hit ? 'ew-resize' : 'crosshair';
-  }
-}
-
-function onOverlayUp(e) {
-  if (dragState) {
-    log('mouseup: drag complete');
-    dragState = null;
-    document.body.classList.remove('dragging');
-    updateActiveDragHighlight();
-    renderResult();
-  }
-}
-
-function onOverlayTouchStart(e) {
-  if (!editMode || !chart1) return;
-  const pos = overlayToCanvasPos(e);
-  const hit = findNearestLine(pos.x);
-  if (hit) {
-    e.preventDefault();
-    dragState = hit;
-    document.body.classList.add('dragging');
-    updateActiveDragHighlight();
-  }
-}
-function onOverlayTouchMove(e) {
-  if (!editMode || !chart1 || !dragState) return;
-  e.preventDefault();
-  const pos = overlayToCanvasPos(e);
-  handleDrag(pos.x);
-}
-function onOverlayTouchEnd() {
-  if (dragState) {
-    dragState = null;
-    document.body.classList.remove('dragging');
-    updateActiveDragHighlight();
-    renderResult();
-  }
-}
-
-function handleDrag(canvasX) {
-  if (!dragState || !chart1) return;
-  const xScale = chart1.scales.x;
-  const cx = Math.max(xScale.left, Math.min(xScale.right, canvasX));
-  const newTimeMs = xScale.getValueForPixel(cx);
-  if (newTimeMs == null) return;
-
-  // 最も近いデータ点にスナップ
-  let bestIdx = 0, bestDist = Infinity;
-  // バイナリサーチ的に高速化 (データは時間順ソート想定)
-  let lo = 0, hi = currentRows.length - 1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    const t = currentRows[mid].datetime.getTime();
-    if (t < newTimeMs) lo = mid + 1;
-    else hi = mid - 1;
-  }
-  // lo 付近が候補
-  for (let i = Math.max(0, hi); i <= Math.min(currentRows.length - 1, lo); i++) {
-    const d = Math.abs(currentRows[i].datetime.getTime() - newTimeMs);
-    if (d < bestDist) { bestDist = d; bestIdx = i; }
+    updateOverlayState();
   }
 
-  const c = currentCycles[dragState.cycleIdx];
-  const key = dragState.key;
-  c[key + '_idx'] = bestIdx;
-  c[key + '_time'] = currentRows[bestIdx].datetime;
-  c[key + '_ch1']  = currentRows[bestIdx].ch1;
-  if (key === 'green') {
-    c.green_ch2 = currentRows[bestIdx].ch2;
-    const yIdx = Math.max(bestIdx - 1, 0);
-    c.yellow_idx = yIdx;
-    c.yellow_time = currentRows[yIdx].datetime;
-    c.yellow_ch1 = currentRows[yIdx].ch1;
-  }
-  c.edited = true;
-  updateChartPoints();
-}
-
-function updateActiveDragHighlight() {
-  if (!chart1) return;
-  chart1.options.plugins.verticalLines.activeDrag = dragState;
-  chart1.update('none');
-  if (chart2) {
-    chart2.options.plugins.verticalLines.activeDrag = dragState && dragState.key === 'green' ? dragState : null;
-    chart2.update('none');
-  }
-}
-
-function updateChartPoints() {
-  if (!chart1) return;
-  const xScale = chart1.scales.x;
-  const tMin = xScale.min, tMax = xScale.max;
-  const filtered = currentCycles.filter(c =>
-    (!tMin || !tMax) ||
-    (c.blue_time.getTime() >= tMin && c.green_time.getTime() <= tMax)
-  );
-
-  chart1.data.datasets[1].data = filtered.map(c => ({x:c.blue_time.getTime(),   y:c.blue_ch1,   _cycle:c.cycle}));
-  chart1.data.datasets[2].data = filtered.map(c => ({x:c.red_time.getTime(),    y:c.red_ch1,    _cycle:c.cycle}));
-  chart1.data.datasets[3].data = filtered.map(c => ({x:c.yellow_time.getTime(), y:c.yellow_ch1, _cycle:c.cycle}));
-  chart1.data.datasets[4].data = filtered.map(c => ({x:c.green_time.getTime(),  y:c.green_ch1,  _cycle:c.cycle}));
-  chart1.options.plugins.verticalLines.cycles = filtered;
-  chart1.options.plugins.verticalLines.activeDrag = dragState;
-  chart1.update('none');
-
-  if (chart2) {
-    chart2.data.datasets[1].data = filtered.map(c => ({x:c.green_time.getTime(), y:c.green_ch2, _cycle:c.cycle}));
-    chart2.options.plugins.verticalLines.cycles = filtered;
-    chart2.options.plugins.verticalLines.activeDrag = dragState && dragState.key === 'green' ? dragState : null;
-    chart2.update('none');
-  }
-}
-
-// =======================================================================
-// ボタン
-// =======================================================================
-document.querySelectorAll('[data-view]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    if (!currentCycles) return;
-    const v = btn.getAttribute('data-view');
-    if (v === 'all') {
-      renderChart(null, null);
-    } else {
-      const n = parseInt(v, 10);
-      $('rangeFrom').value = 1; $('rangeTo').value = Math.min(n, currentCycles.length);
-      renderChart(1, Math.min(n, currentCycles.length));
+  function nearestIndexFromX(xValue) {
+    let lo = 0, hi = state.rows.length - 1;
+    while (lo < hi) {
+      const mid = Math.floor((lo + hi) / 2);
+      if (state.rows[mid].x < xValue) lo = mid + 1; else hi = mid;
     }
-  });
-});
-
-$('btnViewRange').addEventListener('click', () => {
-  if (!currentCycles) return;
-  const f = parseInt($('rangeFrom').value, 10);
-  const t = parseInt($('rangeTo').value, 10);
-  renderChart(f, t);
-});
-
-$('btnResetZoom').addEventListener('click', () => {
-  if (chart1) chart1.resetZoom();
-  if (chart2) chart2.resetZoom();
-});
-
-$('btnEditToggle').addEventListener('click', () => {
-  editMode = !editMode;
-  const btn = $('btnEditToggle');
-  const status = $('editStatus');
-  if (editMode) {
-    btn.textContent = '✏️ 編集モード ON';
-    btn.classList.remove('warn'); btn.classList.add('danger', 'active-edit');
-    status.textContent = '✏️ 編集モード (縦線をドラッグできます)';
-    status.classList.remove('off'); status.classList.add('on');
-    document.body.classList.add('edit-mode');
-  } else {
-    btn.textContent = '✏️ 編集モード OFF';
-    btn.classList.remove('danger', 'active-edit'); btn.classList.add('warn');
-    status.textContent = '閲覧モード';
-    status.classList.remove('on'); status.classList.add('off');
-    document.body.classList.remove('edit-mode', 'dragging');
-    dragState = null;
+    const i = lo;
+    if (i <= 0) return 0;
+    if (i >= state.rows.length) return state.rows.length - 1;
+    return Math.abs(state.rows[i].x - xValue) < Math.abs(state.rows[i-1].x - xValue) ? i : i - 1;
   }
-  log('編集モード: ' + (editMode ? 'ON' : 'OFF'));
-  // 現在の表示範囲で再描画（zoom/events 設定を切り替えるため）
-  const f = parseInt($('rangeFrom').value, 10);
-  const t = parseInt($('rangeTo').value, 10);
-  if (currentCycles) {
-    if (f === 1 && t === currentCycles.length) {
-      renderChart(null, null);
-    } else {
-      renderChart(f, t);
+
+  function visibleHandles(chartName) {
+    const vis = getVisibleCycles();
+    const chart = chartName === 'ch1' ? state.charts.c1 : state.charts.c2;
+    if (!chart) return [];
+    const xScale = chart.scales.x, yScale = chart.scales.y;
+    const handles = [];
+    for (const c of vis) {
+      const b = rowAt(c.blueIdx), r = rowAt(c.redIdx), y = rowAt(c.yellowIdx), g = rowAt(c.greenIdx);
+      if (chartName === 'ch1') {
+        handles.push({ cycleNo:c.cycleNo, key:'blue', px:xScale.getPixelForValue(b.x), py:yScale.getPixelForValue(b.ch1) });
+        handles.push({ cycleNo:c.cycleNo, key:'red', px:xScale.getPixelForValue(r.x), py:yScale.getPixelForValue(r.ch1) });
+        handles.push({ cycleNo:c.cycleNo, key:'yellow', px:xScale.getPixelForValue(y.x), py:yScale.getPixelForValue(y.ch1) });
+        handles.push({ cycleNo:c.cycleNo, key:'green', px:xScale.getPixelForValue(g.x), py:yScale.getPixelForValue(g.ch1) });
+      } else {
+        handles.push({ cycleNo:c.cycleNo, key:'green', px:xScale.getPixelForValue(g.x), py:yScale.getPixelForValue(g.ch2) });
+      }
     }
+    return handles;
   }
-});
 
-$('btnUndoAll').addEventListener('click', () => {
-  if (!originalCycles) return;
-  if (!confirm('全ての手動調整を元に戻しますか？')) return;
-  currentCycles = originalCycles.map(c => Object.assign({}, c, { edited: false }));
-  renderResult();
-  const f = parseInt($('rangeFrom').value, 10);
-  const t = parseInt($('rangeTo').value, 10);
-  renderChart(f, t);
-});
+  function findNearestHandle(chartName, px, py) {
+    const handles = visibleHandles(chartName);
+    let best = null;
+    for (const h of handles) {
+      const d = Math.hypot(px - h.px, py - h.py);
+      const xNear = Math.abs(px - h.px);
+      if (d <= 18 || xNear <= 8) {
+        if (!best || d < best.d) best = { ...h, d };
+      }
+    }
+    return best;
+  }
 
-// =======================================================================
-// ダウンロード
-// =======================================================================
-function buildSheetData() {
-  const header = [
-    'A_サイクル番号',
-    'B_青_放電終了_Ch1(V)',
-    'C_赤_充電ピーク_Ch1(V)',
-    'D_黄_放電開始直前_Ch1(V)',
-    'E_緑_放電開始_Ch1(V)',
-    'F_緑_放電開始_Ch2(V)',
-    'G_青_時刻(放電終了)',
-    'H_赤_時刻(充電ピーク)',
-    'I_黄_時刻(放電直前)',
-    'J_緑_時刻(放電開始)',
-    'K_手動調整フラグ'
-  ];
-  const rows = currentCycles.map(c => [
-    c.cycle,
-    c.blue_ch1, c.red_ch1, c.yellow_ch1, c.green_ch1, c.green_ch2,
-    fmtDate(c.blue_time), fmtDate(c.red_time),
-    fmtDate(c.yellow_time), fmtDate(c.green_time),
-    c.edited ? '調整済' : ''
-  ]);
-  return [header, ...rows];
-}
+  function updateOverlayState() {
+    const cls = state.editMode ? 'chart-overlay editable' : 'chart-overlay';
+    $('overlay1').className = cls;
+    $('overlay2').className = cls;
+    $('editBadge').textContent = state.editMode ? '✏️ 編集モード' : '閲覧モード';
+    $('editBadge').className = state.editMode ? 'badge edit-on' : 'badge';
+    $('editToggle').textContent = state.editMode ? '✏️ 編集モード ON' : '✏️ 編集モード OFF';
+    chartCard.classList.toggle('editing', state.editMode);
+  }
 
-$('dlXlsx').addEventListener('click', () => {
-  if (!currentCycles) return;
-  const data = buildSheetData();
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet(data);
-  XLSX.utils.book_append_sheet(wb, ws, 'Cycles');
-  const base = currentFile.name.replace(/\.[^.]+$/,'');
-  XLSX.writeFile(wb, base + '_cycles.xlsx');
-});
+  function applyMarkerIndex(cycleNo, key, idx) {
+    const c = state.cycles.find(v => v.cycleNo === cycleNo);
+    if (!c) return;
+    if (key === 'blue') c.blueIdx = idx;
+    if (key === 'red') c.redIdx = idx;
+    if (key === 'yellow') c.yellowIdx = idx;
+    if (key === 'green') c.greenIdx = idx;
+    c.edited = true;
+    buildTable();
+  }
 
-$('dlCsv').addEventListener('click', () => {
-  if (!currentCycles) return;
-  const data = buildSheetData();
-  const csv = data.map(r => r.join(',')).join('\r\n');
-  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  const base = currentFile.name.replace(/\.[^.]+$/,'');
-  a.download = base + '_cycles.csv';
-  a.click();
-});
+  function startDrag(chartName, ev) {
+    if (!state.editMode) return;
+    const overlay = ev.currentTarget;
+    const rect = overlay.getBoundingClientRect();
+    const px = ev.clientX - rect.left;
+    const py = ev.clientY - rect.top;
+    const hit = findNearestHandle(chartName, px, py);
+    if (!hit) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    overlay.setPointerCapture(ev.pointerId);
+    state.drag = { chartName, cycleNo: hit.cycleNo, key: hit.key, pointerId: ev.pointerId };
+    renderCharts({ cycleNo: hit.cycleNo, key: hit.key });
+  }
 
-// 初期化: オーバーレイのイベント設定
-document.addEventListener('DOMContentLoaded', () => {
-  initOverlay();
-});
-// DOMContentLoaded が既に発火済みの場合
-if (document.readyState !== 'loading') {
-  initOverlay();
-}
+  function moveDrag(ev) {
+    if (!state.drag) return;
+    const overlay = ev.currentTarget;
+    const rect = overlay.getBoundingClientRect();
+    const px = ev.clientX - rect.left;
+    const chart = state.drag.chartName === 'ch1' ? state.charts.c1 : state.charts.c2;
+    const xValue = chart.scales.x.getValueForPixel(px);
+    const idx = nearestIndexFromX(xValue);
+    applyMarkerIndex(state.drag.cycleNo, state.drag.key, idx);
+    renderCharts({ cycleNo: state.drag.cycleNo, key: state.drag.key });
+  }
+
+  function endDrag(ev) {
+    if (!state.drag) return;
+    try { ev.currentTarget.releasePointerCapture(state.drag.pointerId); } catch(e) {}
+    const active = { cycleNo: state.drag.cycleNo, key: state.drag.key };
+    state.drag = null;
+    renderCharts(active);
+  }
+
+  function attachOverlayEvents(id, chartName) {
+    const el = $(id);
+    el.addEventListener('pointerdown', ev => startDrag(chartName, ev));
+    el.addEventListener('pointermove', moveDrag);
+    el.addEventListener('pointerup', endDrag);
+    el.addEventListener('pointercancel', endDrag);
+  }
+
+  async function runAnalysis() {
+    const file = $('fileInput').files?.[0];
+    if (!file) { setStatus('CSVファイルを選択してください。', 'error'); return; }
+    const params = {
+      skiprows: Number($('skiprows').value || 3),
+      ch2Threshold: Number($('ch2Threshold').value || 0.1),
+      blueShift: Number($('blueShift').value || 0),
+      redShift: Number($('redShift').value || 0),
+      yellowShift: Number($('yellowShift').value || 0),
+      greenShift: Number($('greenShift').value || 0),
+    };
+    const text = await file.text();
+    state.rows = parseCSV(text, params.skiprows);
+    if (!state.rows.length) { setStatus('CSVを読み取れませんでした。ヘッダ行数を確認してください。', 'error'); return; }
+    const steps = [];
+    for (let i=1;i<Math.min(state.rows.length, 2000);i++) steps.push((state.rows[i].x - state.rows[i-1].x) / 1000);
+    state.sampleSeconds = median(steps);
+    state.cycles = detectCycles(state.rows, params);
+    state.originalCycles = cloneCycles(state.cycles);
+    state.view = { mode:'first3', from:1, to:Math.min(3, state.cycles.length) };
+    $('fromCycle').value = 1;
+    $('toCycle').value = Math.min(3, state.cycles.length);
+    metricCycles.textContent = String(state.cycles.length);
+    metricStep.textContent = state.sampleSeconds ? `${state.sampleSeconds.toFixed(1)} s` : '-';
+    buildTable();
+    renderCharts();
+    setStatus(`解析完了: ${state.rows.length.toLocaleString()} 行 / ${state.cycles.length} サイクル。青・赤・黄・緑は縦線と丸の両方で表示しています。`, 'ok');
+  }
+
+  $('runBtn').addEventListener('click', runAnalysis);
+  $('downloadBtn').addEventListener('click', exportCsv);
+  $('editToggle').addEventListener('click', () => {
+    state.editMode = !state.editMode;
+    updateOverlayState();
+  });
+  $('resetEdits').addEventListener('click', () => {
+    state.cycles = cloneCycles(state.originalCycles);
+    buildTable();
+    renderCharts();
+  });
+  document.querySelectorAll('[data-view]').forEach(btn => btn.addEventListener('click', () => {
+    state.view.mode = btn.dataset.view;
+    renderCharts();
+  }));
+  $('applyRange').addEventListener('click', () => { state.view.mode = 'custom'; renderCharts(); });
+
+  attachOverlayEvents('overlay1', 'ch1');
+  attachOverlayEvents('overlay2', 'ch2');
+  updateOverlayState();
+})();
 </script>
 </body>
 </html>
